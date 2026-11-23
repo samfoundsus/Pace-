@@ -1,0 +1,283 @@
+<resources>
+    <string name="app_name">Pace</string>
+
+    <!-- Bottom navigation -->
+    <string name="nav_test">Test</string>
+    <string name="nav_history">History</string>
+    <string name="nav_tools">Tools</string>
+    <string name="nav_settings">Settings</string>
+
+    <!-- Connection types -->
+    <string name="connection_wifi">Wi-Fi</string>
+    <string name="connection_mobile">Mobile data</string>
+    <string name="connection_ethernet">Ethernet</string>
+    <string name="connection_none">Offline</string>
+    <string name="connection_label_prefix">Connection</string>
+
+    <!-- Test screen actions & labels -->
+    <string name="action_start">Start</string>
+    <string name="action_run">Run</string>
+    <string name="action_cancel">Cancel</string>
+    <string name="action_run_again">Run again</string>
+    <string name="action_run_anyway">Run anyway</string>
+    <string name="action_dismiss">Dismiss</string>
+    <string name="action_clear_all">Clear all</string>
+    <string name="action_delete">Delete</string>
+    <string name="action_back">Back</string>
+    <string name="action_refresh">Refresh</string>
+    <string name="action_open_settings">Open settings</string>
+    <string name="action_share">Share</string>
+    <string name="action_export_pdf">Export PDF</string>
+    <string name="action_save_pdf">Save PDF</string>
+
+    <!-- Stages -->
+    <string name="stage_idle">Ready to test</string>
+    <string name="stage_ping">Ping</string>
+    <string name="stage_download">Download</string>
+    <string name="stage_upload">Upload</string>
+    <string name="stage_complete">Test complete</string>
+    <string name="stage_warming_up">Warming up</string>
+    <string name="gauge_tap_for_upload">Tap for Upload</string>
+    <string name="gauge_tap_for_download">Tap for Download</string>
+
+    <!-- Units & metrics -->
+    <string name="unit_mbps">Mbps</string>
+    <string name="unit_mb_per_sec">MB/s</string>
+    <string name="unit_ms">ms</string>
+    <string name="unit_dbm">dBm</string>
+    <string name="metric_ping">Ping</string>
+    <string name="metric_jitter">Jitter</string>
+    <string name="metric_download">Download</string>
+    <string name="metric_upload">Upload</string>
+    <string name="metric_dl_ping">Down</string>
+    <string name="metric_ul_ping">Up</string>
+    <string name="metric_unavailable">-</string>
+    <string name="value_unavailable">Unavailable</string>
+    <string name="graph_title_download">Download throughput</string>
+    <string name="graph_title_upload">Upload throughput</string>
+    <string name="graph_title_idle">Live throughput</string>
+    <string name="graph_empty_hint">Speed curve appears during download and upload</string>
+
+    <!-- Connection info & Wi-Fi / Mobile permission flow -->
+    <string name="wifi_name_hidden">Wi-Fi name hidden</string>
+    <string name="action_show_wifi_name">Show Wi-Fi name</string>
+    <string name="action_show_network_type">Show network type</string>
+    <string name="wifi_permission_denied_note">Location permission is needed by Android to read the Wi-Fi name.</string>
+    <string name="wifi_permission_permanently_denied_note">Location permission is off. Enable precise location in app settings to show the Wi-Fi name.</string>
+    <string name="wifi_location_off_note">Location services are turned off. Turn on location in settings to show the Wi-Fi name.</string>
+    <string name="cd_latency_row">Latency summary: Ping, Download ping, Upload ping, and Jitter</string>
+    <string name="cd_connection_info_line">Connection and device details</string>
+
+    <!-- Bufferbloat card -->
+    <string name="bufferbloat_title">Bufferbloat</string>
+    <string name="bufferbloat_idle_ping">Idle ping</string>
+    <string name="bufferbloat_download_ping">Under download</string>
+    <string name="bufferbloat_upload_ping">Under upload</string>
+    <string name="bufferbloat_grade_label">Grade %1$s</string>
+    <string name="bufferbloat_grade_unavailable">Grade unavailable</string>
+    <string name="bufferbloat_desc_a">Latency stays low under heavy traffic — smooth for gaming, calls, and streaming.</string>
+    <string name="bufferbloat_desc_b">Latency rises slightly under heavy traffic, and most real-time apps stay responsive.</string>
+    <string name="bufferbloat_desc_c">Latency rises noticeably during heavy transfers; calls or games may occasionally stutter.</string>
+    <string name="bufferbloat_desc_d">High delay appears when the network is busy, causing lag during downloads or uploads.</string>
+    <string name="bufferbloat_desc_f">Severe bufferbloat under load; real-time apps will lag heavily when traffic is active.</string>
+    <string name="bufferbloat_desc_unavailable">Not enough loaded latency samples were collected to grade bufferbloat.</string>
+
+    <!-- Estimated Use-Case Ratings -->
+    <string name="ratings_section_title">Estimated experience</string>
+    <string name="rating_good">Good</string>
+    <string name="rating_okay">Okay</string>
+    <string name="rating_poor">Poor</string>
+    <string name="use_case_browsing">Browsing</string>
+    <string name="use_case_streaming">Streaming</string>
+    <string name="use_case_video_calls">Video calls</string>
+    <string name="use_case_gaming">Gaming</string>
+
+    <!-- Use-case one-line reasons -->
+    <string name="reason_browsing_good">Fast page loads with responsive latency.</string>
+    <string name="reason_browsing_okay">Pages will load, though latency or speed is modest.</string>
+    <string name="reason_browsing_poor">Low download speed or high ping may slow page loads.</string>
+    <string name="reason_streaming_good">Enough bandwidth for crisp 4K streaming.</string>
+    <string name="reason_streaming_okay">Suitable for HD streaming, below typical 4K speed.</string>
+    <string name="reason_streaming_poor">Download speed may struggle to keep HD video smooth.</string>
+    <string name="reason_video_calls_good">Steady upload, low ping, and low jitter for clear calls.</string>
+    <string name="reason_video_calls_okay">Calls should work, with minor pauses under load.</string>
+    <string name="reason_video_calls_poor">Low upload speed, high ping, or high jitter may disrupt calls.</string>
+    <string name="reason_gaming_good">Low ping, steady jitter, and minimal bufferbloat.</string>
+    <string name="reason_gaming_okay">Playable latency, though spikes or bufferbloat may occur.</string>
+    <string name="reason_gaming_poor">High ping, jitter, or bufferbloat may cause noticeable lag.</string>
+    <string name="reason_unavailable">Some required metrics were unavailable for this test.</string>
+
+    <!-- History screen -->
+    <string name="history_title">History</string>
+    <string name="history_detail_title">Test details</string>
+    <string name="history_empty_title">No saved tests yet</string>
+    <string name="history_empty_subtitle">Completed speed tests appear here automatically so you can track performance over time.</string>
+    <string name="history_clear_dialog_title">Clear all history?</string>
+    <string name="history_clear_dialog_body">This permanently removes all saved speed test results from this device.</string>
+    <string name="history_item_not_found">This test result is no longer available.</string>
+
+    <!-- Tools hub -->
+    <string name="tools_title">Tools</string>
+    <string name="tools_section_diagnostics">Diagnostics</string>
+    <string name="tools_network_info_title">Network info</string>
+    <string name="tools_network_info_subtitle">Connection status, Wi-Fi details, public IP, and IPv4/IPv6 support</string>
+    <string name="tools_dns_benchmark_title">DNS benchmark</string>
+    <string name="tools_dns_benchmark_subtitle">Measure response times across your current DNS and public resolvers</string>
+    <string name="tools_extended_test_title">Extended test</string>
+    <string name="tools_extended_test_subtitle">Sustained 30s or 60s download and upload stability test</string>
+
+    <!-- Extended test screen -->
+    <string name="extended_test_title">Extended test</string>
+    <string name="extended_test_duration_label">Phase duration</string>
+    <string name="extended_test_duration_30s">30s</string>
+    <string name="extended_test_duration_60s">60s</string>
+    <string name="extended_test_duration_per_phase">%1$d seconds each for download and upload</string>
+    <string name="extended_test_estimate_title">Estimated data use</string>
+    <string name="extended_test_estimate_value">~%1$s MB</string>
+    <string name="extended_test_estimate_basis">Based on your last speed test (%1$s down / %2$s up)</string>
+    <string name="extended_test_estimate_unavailable">Run a regular speed test first to estimate data usage.</string>
+    <string name="extended_test_mobile_banner">You are on mobile data. An extended test transfers significantly more data than a quick test.</string>
+    <string name="extended_test_mobile_dialog_body">Running an extended %1$ds test on mobile data can transfer a large amount of data%2$s. Do you want to continue?</string>
+    <string name="extended_test_mobile_dialog_estimate"> (estimated ~%1$s MB)</string>
+    <string name="extended_test_not_saved_note">Extended test results are not saved to History.</string>
+    <string name="extended_test_phase_download">Download</string>
+    <string name="extended_test_phase_upload">Upload</string>
+    <string name="extended_test_phase_warming">Warming up</string>
+    <string name="extended_test_seconds_remaining">%1$ds left</string>
+    <string name="extended_test_graph_waiting">Waiting…</string>
+    <string name="extended_test_graph_avg_label">Avg %1$s %2$s</string>
+    <string name="extended_test_graph_max_label">Max %1$s %2$s</string>
+    <string name="extended_test_graph_axis_zero">0s</string>
+    <string name="extended_test_graph_axis_end">%1$ds</string>
+    <string name="extended_test_cancelled_partial">Extended test cancelled. Partial results are shown below.</string>
+    <string name="extended_test_cancelled_empty">Extended test cancelled before data was collected.</string>
+    <string name="extended_test_summary_title">Stability summary</string>
+    <string name="extended_test_stat_average">Average</string>
+    <string name="extended_test_stat_min">Minimum</string>
+    <string name="extended_test_stat_max">Maximum</string>
+    <string name="extended_test_stat_stability">Stability</string>
+    <string name="extended_test_stability_percent">%1$d%%</string>
+    <string name="extended_test_stability_note">Percentage of time speed stayed within 80%% of the average (first 1.5s warm-up excluded).</string>
+
+    <!-- Share & PDF export -->
+    <string name="share_chooser_title">Share speed test result</string>
+    <string name="share_card_error">Could not generate the result card.</string>
+    <string name="pdf_export_dialog_title">Export PDF report</string>
+    <string name="pdf_export_dialog_body">Creates a 1-page A4 report with your throughput, latency, bufferbloat grade, and estimated ratings.</string>
+    <string name="pdf_export_include_network_name">Include Wi-Fi/carrier name</string>
+    <string name="pdf_export_include_network_hint">Off by default for privacy</string>
+    <string name="pdf_export_success">PDF report saved</string>
+    <string name="pdf_export_error">Could not save the PDF report.</string>
+
+    <!-- Network info screen -->
+    <string name="network_info_title">Network info</string>
+    <string name="network_info_section_connection">Connection</string>
+    <string name="network_info_connection_type">Type</string>
+    <string name="network_info_connection_validated">Validated</string>
+    <string name="network_info_validated_yes">Yes</string>
+    <string name="network_info_validated_no">No</string>
+
+    <string name="network_info_section_wifi">Wi-Fi</string>
+    <string name="network_info_wifi_name">Name (SSID)</string>
+    <string name="network_info_wifi_band">Band</string>
+    <string name="network_info_wifi_link_speed">Link speed</string>
+    <string name="network_info_wifi_signal">Signal</string>
+    <string name="network_info_wifi_band_24">2.4 GHz</string>
+    <string name="network_info_wifi_band_5">5 GHz</string>
+    <string name="network_info_wifi_band_6">6 GHz</string>
+    <string name="network_info_signal_excellent">Excellent</string>
+    <string name="network_info_signal_good">Good</string>
+    <string name="network_info_signal_fair">Fair</string>
+    <string name="network_info_signal_weak">Weak</string>
+    <string name="network_info_link_speed_format">%1$d Mbps</string>
+    <string name="network_info_signal_format">%1$d dBm · %2$s</string>
+
+    <string name="network_info_section_mobile">Mobile data</string>
+    <string name="network_info_mobile_carrier">Carrier</string>
+    <string name="network_info_mobile_network_type">Network</string>
+
+    <string name="network_info_section_internet">Internet</string>
+    <string name="network_info_public_ip">Public IP</string>
+    <string name="network_info_isp">ISP</string>
+    <string name="network_info_ipv4">IPv4</string>
+    <string name="network_info_ipv6">IPv6</string>
+    <string name="network_info_protocol_supported">Supported</string>
+    <string name="network_info_protocol_not_detected">Not detected</string>
+    <string name="network_info_checking">Checking…</string>
+    <string name="network_info_external_note">IP and ISP are looked up from an external service.</string>
+
+    <!-- DNS benchmark screen -->
+    <string name="dns_benchmark_title">DNS benchmark</string>
+    <string name="dns_benchmark_intro">Queries 5 popular domains across 3 rounds per resolver with a 2-second timeout.</string>
+    <string name="dns_resolver_system_name">Your current DNS</string>
+    <string name="dns_resolver_system_address">System resolver</string>
+    <string name="dns_resolver_system_cache_note">System DNS cache can make this appear faster.</string>
+    <string name="dns_resolver_cloudflare_name">Cloudflare</string>
+    <string name="dns_resolver_google_name">Google</string>
+    <string name="dns_resolver_quad9_name">Quad9</string>
+    <string name="dns_status_ready">Ready</string>
+    <string name="dns_status_testing">Testing…</string>
+    <string name="dns_status_unreachable">Unreachable</string>
+    <string name="dns_badge_fastest">Fastest</string>
+    <string name="dns_progress_testing">Testing %1$s (%2$d/%3$d)…</string>
+    <string name="dns_failed_queries_one">1 failed query</string>
+    <string name="dns_failed_queries_many">%1$d failed queries</string>
+    <string name="dns_speed_note">DNS speed is not internet speed — it only affects how fast pages start loading.</string>
+    <string name="dns_howto_title">How to use a faster DNS</string>
+    <string name="dns_howto_body">On Android, open your device\'s Private DNS setting (the exact path varies by phone) and enter one of these hostnames:</string>
+    <string name="dns_howto_cloudflare_row">one.one.one.one — Cloudflare</string>
+    <string name="dns_howto_google_row">dns.google — Google</string>
+    <string name="dns_howto_quad9_row">dns.quad9.net — Quad9</string>
+    <string name="dns_howto_footer">Pace cannot change DNS settings itself.</string>
+
+    <!-- Settings screen -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_appearance_section">Appearance</string>
+    <string name="settings_theme_label">Theme</string>
+    <string name="settings_theme_dialog_title">Choose theme</string>
+    <string name="settings_theme_system">System</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_dynamic_color_title">Dynamic color</string>
+    <string name="settings_dynamic_color_summary">Use colors from your wallpaper (Material You)</string>
+    <string name="settings_dynamic_color_unsupported">Requires Android 12 or newer</string>
+    <string name="settings_test_section">Test</string>
+    <string name="settings_units_label">Speed units</string>
+    <string name="settings_units_dialog_title">Choose speed units</string>
+    <string name="settings_lite_mode_title">Lite mode</string>
+    <string name="settings_lite_mode_subtitle">Run 5-second phases instead of 10 to save time and data</string>
+    <string name="settings_haptics_title">Haptic feedback</string>
+    <string name="settings_haptics_subtitle">Vibrate when a test starts and finishes</string>
+    <string name="settings_data_section">Data</string>
+    <string name="settings_mobile_warning_title">Mobile data warning</string>
+    <string name="settings_mobile_warning_subtitle">Ask before running a test on cellular data</string>
+    <string name="settings_privacy_section">Privacy</string>
+    <string name="settings_privacy_title">On-device history &amp; external lookups</string>
+    <string name="settings_privacy_body">IP and ISP are looked up from an external service, and DNS benchmark tests contact third-party DNS servers. Nothing is uploaded or stored anywhere, and your test history stays on this device.</string>
+    <string name="settings_footer_brand">Pace - Internet Speed Test</string>
+
+    <!-- Mobile data warning dialog -->
+    <string name="mobile_data_warning_title">Mobile data usage</string>
+    <string name="mobile_data_warning_body">Running a speed test on mobile data typically uses about 50–150 MB depending on your connection speed. Do you want to continue?</string>
+
+    <!-- Friendly error messages -->
+    <string name="error_no_internet">No internet connection. Connect to Wi-Fi or mobile data and try again.</string>
+    <string name="error_timeout">The test timed out before completing. Check your signal and try again.</string>
+    <string name="error_server_unreachable">Could not reach the test server. Please try again in a moment.</string>
+    <string name="error_network_lost">Connection was lost during the test. The measurement was cancelled.</string>
+    <string name="error_network_changed">Your network changed during the test. The measurement was cancelled for accuracy.</string>
+    <string name="error_unknown">Something went wrong while running the test. Please try again.</string>
+
+    <!-- Accessibility content descriptions -->
+    <string name="cd_speed_gauge">Live speed gauge showing %1$s %2$s</string>
+    <string name="cd_live_graph">Live speed over time graph</string>
+    <string name="cd_connection_icon">Active connection type icon</string>
+    <string name="cd_stage_complete">Stage complete</string>
+    <string name="cd_warning_icon">Mobile data usage warning</string>
+    <string name="cd_error_icon">Test error</string>
+    <string name="cd_delete_item">Delete result</string>
+    <string name="cd_navigate_back">Navigate back</string>
+    <string name="cd_refresh_network_info">Refresh network information</string>
+    <string name="cd_share_result">Share result card</string>
+    <string name="cd_export_pdf">Export result as PDF</string>
+</resources>

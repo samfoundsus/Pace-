@@ -1,0 +1,95 @@
+name: Build Pace Android APK
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17 (Temurin)
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Make Gradle wrapper executable
+        run: chmod +x gradlew
+
+      - name: Prepare debug keystore
+        run: |
+          if [ ! -f debug.keystore ]; then
+            if [ -f debug.keystore.base64 ]; then
+              tr -d '\n\r ' < debug.keystore.base64 | base64 --decode > debug.keystore
+            else
+              keytool -genkeypair -v \
+                -keystore debug.keystore \
+                -storepass android \
+                -alias androiddebugkey \
+                -keypass android \
+                -keyalg RSA \
+                -keysize 2048 \
+                -validity 10000 \
+                -dname "CN=Android Debug,O=Android,C=US"
+            fi
+          fi
+
+      - name: Build Debug APK
+        run: ./gradlew assembleDebug
+
+      - name: Upload Debug APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: pace-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+
+      - name: Build Signed Release APK
+        if: >-
+          secrets.KEYSTORE_BASE64 != '' &&
+          secrets.KEYSTORE_PASSWORD != '' &&
+          secrets.KEY_ALIAS != '' &&
+          secrets.KEY_PASSWORD != ''
+        env:
+          KEYSTORE_BASE64: ${{ secrets.KEYSTORE_BASE64 }}
+          KEYSTORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          STORE_PASSWORD: ${{ secrets.KEYSTORE_PASSWORD }}
+          KEY_ALIAS: ${{ secrets.KEY_ALIAS }}
+          KEY_PASSWORD: ${{ secrets.KEY_PASSWORD }}
+          KEYSTORE_PATH: ${{ runner.temp }}/pace-release.jks
+        run: |
+          printf '%s' "$KEYSTORE_BASE64" | tr -d '\n\r ' | base64 --decode > "$KEYSTORE_PATH"
+          if [ "$KEY_ALIAS" != "upload" ]; then
+            keytool -changealias \
+              -keystore "$KEYSTORE_PATH" \
+              -storepass "$KEYSTORE_PASSWORD" \
+              -alias "$KEY_ALIAS" \
+              -destalias upload \
+              -keypass "$KEY_PASSWORD"
+          fi
+          ./gradlew assembleRelease
+
+      - name: Clean up temporary release keystore
+        if: always()
+        run: rm -f "${{ runner.temp }}/pace-release.jks"
+
+      - name: Upload Release APK
+        if: >-
+          success() &&
+          secrets.KEYSTORE_BASE64 != '' &&
+          secrets.KEYSTORE_PASSWORD != '' &&
+          secrets.KEY_ALIAS != '' &&
+          secrets.KEY_PASSWORD != ''
+        uses: actions/upload-artifact@v4
+        with:
+          name: pace-release-apk
+          path: app/build/outputs/apk/release/*.apk
+          if-no-files-found: error

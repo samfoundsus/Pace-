@@ -1,0 +1,6 @@
+{
+  "name": "Pace",
+  "description": "Lightweight Material You internet speed test and network diagnostics app measuring ping, jitter, download, upload, network info, and DNS speed.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}

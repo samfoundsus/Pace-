@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="288dp"
+    android:height="288dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <!--
+        Dedicated dark-theme Android 12+ splash icon vector.
+        Uses the exact same gradient arc with a light needle (#E6E8EE) for crisp contrast on #0B0F14.
+    -->
+    <path
+        android:pathData="M 28.0,64.7 A 26.0,26.0 0 0,1 54.0,38.7 A 26.0,26.0 0 0,1 80.0,64.7 A 3.5,3.5 0 0,1 76.5,68.2 A 3.5,3.5 0 0,1 73.0,64.7 A 19.0,19.0 0 0,0 54.0,45.7 A 19.0,19.0 0 0,0 35.0,64.7 A 3.5,3.5 0 0,1 31.5,68.2 A 3.5,3.5 0 0,1 28.0,64.7 Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:endX="80.0"
+                android:endY="54.0"
+                android:startX="28.0"
+                android:startY="54.0"
+                android:type="linear">
+                <item
+                    android:color="#FF6FD3FF"
+                    android:offset="0.0" />
+                <item
+                    android:color="#FF0557FF"
+                    android:offset="1.0" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <path
+        android:fillColor="#FFE6E8EE"
+        android:pathData="M 52.14,61.73 L 64.31,54.11 A 1.5,1.5 0 0,1 66.22,56.38 L 56.60,67.05 Z" />
+
+    <path
+        android:fillColor="#FFE6E8EE"
+        android:pathData="M 54.0,60.0 A 4.7,4.7 0 0,1 58.7,64.7 A 4.7,4.7 0 0,1 54.0,69.4 A 4.7,4.7 0 0,1 49.3,64.7 A 4.7,4.7 0 0,1 54.0,60.0 Z" />
+</vector>
