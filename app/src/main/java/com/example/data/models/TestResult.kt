@@ -3,7 +3,7 @@ package com.example.data.models
 import androidx.compose.runtime.Immutable
 
 /**
- * Future-ready speed test result model.
+ * Speed test result model.
  * Any unavailable measurement is represented as null, never 0.
  */
 @Immutable
@@ -22,4 +22,6 @@ data class TestResult(
     val cellularNetworkTag: String? = null,
     val deviceModel: String? = null,
     val wifiBand: String? = null,
+    val serverName: String? = null,
+    val serverLocation: String? = null,
 )

@@ -1,6 +1,7 @@
 package com.example.data.models
 
 import androidx.compose.runtime.Immutable
+import com.example.data.server.ServerProfile
 
 enum class ConnectionType {
     WIFI,
@@ -33,6 +34,13 @@ sealed interface SpeedTestError {
 }
 
 sealed interface SpeedTestProgress {
+    data class ServerActive(val server: ServerProfile) : SpeedTestProgress
+
+    data class ServerFallback(
+        val previousServerName: String,
+        val fallbackServer: ServerProfile,
+    ) : SpeedTestProgress
+
     data class StageStarted(val stage: TestStage) : SpeedTestProgress
 
     data class PingSampled(

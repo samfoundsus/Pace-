@@ -196,6 +196,18 @@ object ResultPdfExporter {
         bodyText.textSize = 11.5f
         canvas.drawText(connectionLine, margin, y, bodyText)
 
+        val serverName = result.serverName?.trim()?.takeIf { it.isNotEmpty() }
+        if (serverName != null) {
+            val serverLocation = result.serverLocation?.trim()?.takeIf { it.isNotEmpty() }
+            val serverLine = if (serverLocation != null) {
+                "Server: $serverName · $serverLocation"
+            } else {
+                "Server: $serverName"
+            }
+            y += 16f
+            canvas.drawText(serverLine, margin, y, bodyText)
+        }
+
         // Throughput cards (Download & Upload)
         y += 24f
         canvas.drawText("THROUGHPUT", margin, y, sectionTitle)

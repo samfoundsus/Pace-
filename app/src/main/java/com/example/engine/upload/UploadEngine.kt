@@ -2,8 +2,12 @@ package com.example.engine.upload
 
 import com.example.data.constants.SpeedTestConstants
 import com.example.data.models.SpeedSample
+import com.example.data.server.CloudflareColoMapper
+import com.example.data.server.ServerKind
+import com.example.data.server.ServerProfile
 import com.example.engine.latency.ServerHttpException
 import com.example.engine.speedtest.RollingSpeedTracker
+import com.example.engine.speedtest.ServerNoDataTimeoutException
 import com.example.engine.speedtest.SpeedMath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -40,15 +44,20 @@ sealed interface UploadEvent {
         val progressFraction: Float,
     ) : UploadEvent
 
-    data class Completed(val finalMbps: Double?) : UploadEvent
+    data class Completed(
+        val finalMbps: Double?,
+        val cfRayLocation: String? = null,
+    ) : UploadEvent
 }
 
 private class UploadCapReachedException : IOException("Upload duration cap reached")
 
 /**
  * Multi-stream HTTP upload throughput engine.
- * Runs 4 parallel streams capped at 10s, discards the first 1.5s as warm-up,
- * generates non-compressible payload in memory, and counts only completed flushed bytes.
+ * Runs 4 parallel streams capped at durationMs, discards the first 1.5s as warm-up,
+ * generates non-compressible payload in memory, counts only completed flushed bytes,
+ * and uses [ServerProfile.uploadUrl].
+ * If [noDataTimeoutMs] is set and zero bytes are confirmed within that window, throws [ServerNoDataTimeoutException].
  */
 class UploadEngine(
     private val client: OkHttpClient,
@@ -63,16 +72,20 @@ class UploadEngine(
     private val payloadChunk: ByteArray = Random(42).nextBytes(SpeedTestConstants.UPLOAD_PAYLOAD_BUFFER_BYTES)
 
     fun measureUpload(
+        server: ServerProfile,
         streamCount: Int = SpeedTestConstants.UPLOAD_STREAM_COUNT,
         durationMs: Long = SpeedTestConstants.UPLOAD_DURATION_MS,
         warmUpMs: Long = SpeedTestConstants.UPLOAD_WARMUP_MS,
         sampleIntervalMs: Long = SpeedTestConstants.SAMPLE_INTERVAL_MS,
+        noDataTimeoutMs: Long? = null,
     ): Flow<UploadEvent> = channelFlow {
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val isCapActive = AtomicBoolean(true)
+        val noDataTimedOut = AtomicBoolean(false)
         val totalCompletedBytes = AtomicLong(0L)
         val measuredCompletedBytes = AtomicLong(0L)
         val firstError = AtomicReference<Throwable?>(null)
+        val discoveredCfLocation = AtomicReference<String?>(null)
 
         val testStartNanos = System.nanoTime()
         val warmUpEndNanos = testStartNanos + warmUpMs * 1_000_000L
@@ -111,7 +124,7 @@ class UploadEngine(
                             )
 
                             val request = Request.Builder()
-                                .url(SpeedTestConstants.uploadUrl(System.nanoTime() + streamIndex))
+                                .url(server.uploadUrl(System.nanoTime() + streamIndex))
                                 .cacheControl(noStoreCacheControl)
                                 .post(body)
                                 .build()
@@ -122,6 +135,10 @@ class UploadEngine(
 
                             try {
                                 call.execute().use { response ->
+                                    if (server.kind == ServerKind.CLOUDFLARE && discoveredCfLocation.get() == null) {
+                                        CloudflareColoMapper.locationFromCfRay(response.header("cf-ray"))
+                                            ?.let { discoveredCfLocation.compareAndSet(null, it) }
+                                    }
                                     if (!response.isSuccessful) {
                                         throw ServerHttpException(response.code)
                                     }
@@ -134,11 +151,9 @@ class UploadEngine(
                                         .coerceAtMost(SpeedTestConstants.UPLOAD_MAX_CHUNK_BYTES)
                                 }
                             } catch (_: UploadCapReachedException) {
-                                // Normal 10-second cap exit; only already-flushed slices were counted
                                 break
                             } catch (e: IOException) {
                                 if (isActive && isCapActive.get() && System.nanoTime() < testEndNanos) {
-                                    // Roll back unconfirmed bytes from a failed request
                                     if (requestTotalWritten > 0L) {
                                         totalCompletedBytes.addAndGet(-requestTotalWritten)
                                     }
@@ -182,6 +197,19 @@ class UploadEngine(
                     }
                 }
 
+                val noDataWatcher = if (noDataTimeoutMs != null && noDataTimeoutMs > 0L) {
+                    launch(Dispatchers.IO) {
+                        delay(noDataTimeoutMs)
+                        if (totalCompletedBytes.get() <= 0L) {
+                            noDataTimedOut.set(true)
+                            isCapActive.set(false)
+                            activeCalls.forEach { it.cancel() }
+                        }
+                    }
+                } else {
+                    null
+                }
+
                 val capWatcher = launch(Dispatchers.IO) {
                     val remainingMs = ((testEndNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(0L)
                     delay(remainingMs)
@@ -190,8 +218,13 @@ class UploadEngine(
                 }
 
                 workerJobs.awaitAll()
+                noDataWatcher?.cancelAndJoin()
                 capWatcher.cancelAndJoin()
                 samplerJob.cancelAndJoin()
+            }
+
+            if (noDataTimedOut.get()) {
+                throw ServerNoDataTimeoutException("No upload data transferred within ${noDataTimeoutMs}ms")
             }
 
             val actualEndNanos = System.nanoTime().coerceAtMost(testEndNanos)
@@ -201,6 +234,9 @@ class UploadEngine(
 
             if (postWarmupBytes <= 0L && error != null) {
                 throw error
+            }
+            if (finalTotalBytes <= 0L && noDataTimeoutMs != null) {
+                throw ServerNoDataTimeoutException("Upload transferred zero bytes")
             }
 
             if (finalTotalBytes > 0L && actualEndNanos > testStartNanos) {
@@ -219,7 +255,12 @@ class UploadEngine(
 
             val postWarmupDurationNanos = actualEndNanos - warmUpEndNanos
             val finalMbps = SpeedMath.calculateMbps(postWarmupBytes, postWarmupDurationNanos)
-            send(UploadEvent.Completed(finalMbps = finalMbps))
+            send(
+                UploadEvent.Completed(
+                    finalMbps = finalMbps,
+                    cfRayLocation = discoveredCfLocation.get(),
+                ),
+            )
         } catch (ce: CancellationException) {
             isCapActive.set(false)
             activeCalls.forEach { it.cancel() }

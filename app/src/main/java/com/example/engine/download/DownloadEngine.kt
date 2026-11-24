@@ -2,8 +2,12 @@ package com.example.engine.download
 
 import com.example.data.constants.SpeedTestConstants
 import com.example.data.models.SpeedSample
+import com.example.data.server.CloudflareColoMapper
+import com.example.data.server.ServerKind
+import com.example.data.server.ServerProfile
 import com.example.engine.latency.ServerHttpException
 import com.example.engine.speedtest.RollingSpeedTracker
+import com.example.engine.speedtest.ServerNoDataTimeoutException
 import com.example.engine.speedtest.SpeedMath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -35,13 +39,17 @@ sealed interface DownloadEvent {
         val progressFraction: Float,
     ) : DownloadEvent
 
-    data class Completed(val finalMbps: Double?) : DownloadEvent
+    data class Completed(
+        val finalMbps: Double?,
+        val cfRayLocation: String? = null,
+    ) : DownloadEvent
 }
 
 /**
  * Multi-stream HTTP download throughput engine.
- * Runs 6 parallel streams capped at 10s, discards the first 1.5s as warm-up,
- * and emits ~10 Hz smoothed rolling average updates.
+ * Runs 6 parallel streams capped at durationMs, discards the first 1.5s as warm-up,
+ * emits ~10 Hz smoothed rolling average updates, and uses [ServerProfile.downloadUrl].
+ * If [noDataTimeoutMs] is set and zero bytes arrive in that window, throws [ServerNoDataTimeoutException].
  */
 class DownloadEngine(
     private val client: OkHttpClient,
@@ -52,16 +60,20 @@ class DownloadEngine(
         .build()
 
     fun measureDownload(
+        server: ServerProfile,
         streamCount: Int = SpeedTestConstants.DOWNLOAD_STREAM_COUNT,
         durationMs: Long = SpeedTestConstants.DOWNLOAD_DURATION_MS,
         warmUpMs: Long = SpeedTestConstants.DOWNLOAD_WARMUP_MS,
         sampleIntervalMs: Long = SpeedTestConstants.SAMPLE_INTERVAL_MS,
+        noDataTimeoutMs: Long? = null,
     ): Flow<DownloadEvent> = channelFlow {
         val activeCalls = ConcurrentHashMap.newKeySet<Call>()
         val isCapActive = AtomicBoolean(true)
+        val noDataTimedOut = AtomicBoolean(false)
         val totalBytes = AtomicLong(0L)
         val measuredBytes = AtomicLong(0L)
         val firstError = AtomicReference<Throwable?>(null)
+        val discoveredCfLocation = AtomicReference<String?>(null)
 
         val testStartNanos = System.nanoTime()
         val warmUpEndNanos = testStartNanos + warmUpMs * 1_000_000L
@@ -80,7 +92,7 @@ class DownloadEngine(
                         while (isActive && isCapActive.get() && System.nanoTime() < testEndNanos) {
                             val request = Request.Builder()
                                 .url(
-                                    SpeedTestConstants.downloadUrl(
+                                    server.downloadUrl(
                                         bytes = SpeedTestConstants.DOWNLOAD_CHUNK_BYTES,
                                         cacheBuster = System.nanoTime() + streamIndex,
                                     ),
@@ -94,6 +106,10 @@ class DownloadEngine(
                             activeCalls.add(call)
                             try {
                                 call.execute().use { response ->
+                                    if (server.kind == ServerKind.CLOUDFLARE && discoveredCfLocation.get() == null) {
+                                        CloudflareColoMapper.locationFromCfRay(response.header("cf-ray"))
+                                            ?.let { discoveredCfLocation.compareAndSet(null, it) }
+                                    }
                                     if (!response.isSuccessful) {
                                         throw ServerHttpException(response.code)
                                     }
@@ -154,7 +170,19 @@ class DownloadEngine(
                     }
                 }
 
-                // Wait for the duration cap or early completion of all streams
+                val noDataWatcher = if (noDataTimeoutMs != null && noDataTimeoutMs > 0L) {
+                    launch(Dispatchers.IO) {
+                        delay(noDataTimeoutMs)
+                        if (totalBytes.get() <= 0L) {
+                            noDataTimedOut.set(true)
+                            isCapActive.set(false)
+                            activeCalls.forEach { it.cancel() }
+                        }
+                    }
+                } else {
+                    null
+                }
+
                 val capWatcher = launch(Dispatchers.IO) {
                     val remainingMs = ((testEndNanos - System.nanoTime()) / 1_000_000L).coerceAtLeast(0L)
                     delay(remainingMs)
@@ -163,8 +191,13 @@ class DownloadEngine(
                 }
 
                 workerJobs.awaitAll()
+                noDataWatcher?.cancelAndJoin()
                 capWatcher.cancelAndJoin()
                 samplerJob.cancelAndJoin()
+            }
+
+            if (noDataTimedOut.get()) {
+                throw ServerNoDataTimeoutException("No download data received within ${noDataTimeoutMs}ms")
             }
 
             val actualEndNanos = System.nanoTime().coerceAtMost(testEndNanos)
@@ -174,6 +207,9 @@ class DownloadEngine(
 
             if (postWarmupBytes <= 0L && error != null) {
                 throw error
+            }
+            if (finalTotalBytes <= 0L && noDataTimeoutMs != null) {
+                throw ServerNoDataTimeoutException("Download returned zero bytes")
             }
 
             if (finalTotalBytes > 0L && actualEndNanos > testStartNanos) {
@@ -192,7 +228,12 @@ class DownloadEngine(
 
             val postWarmupDurationNanos = actualEndNanos - warmUpEndNanos
             val finalMbps = SpeedMath.calculateMbps(postWarmupBytes, postWarmupDurationNanos)
-            send(DownloadEvent.Completed(finalMbps = finalMbps))
+            send(
+                DownloadEvent.Completed(
+                    finalMbps = finalMbps,
+                    cfRayLocation = discoveredCfLocation.get(),
+                ),
+            )
         } catch (ce: CancellationException) {
             isCapActive.set(false)
             activeCalls.forEach { it.cancel() }

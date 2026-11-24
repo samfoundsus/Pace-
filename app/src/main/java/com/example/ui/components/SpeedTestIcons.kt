@@ -528,4 +528,61 @@ object SpeedTestIcons {
             }
         }.build()
     }
+
+    val Server: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Server",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 1.9f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(4f, 5f)
+                horizontalLineTo(20f)
+                verticalLineTo(10f)
+                horizontalLineTo(4f)
+                close()
+                moveTo(4f, 14f)
+                horizontalLineTo(20f)
+                verticalLineTo(19f)
+                horizontalLineTo(4f)
+                close()
+            }
+            path(fill = SolidColor(Color.Black)) {
+                moveTo(7.5f, 6.6f)
+                arcTo(0.9f, 0.9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 7.49f, 6.6f)
+                close()
+                moveTo(7.5f, 15.6f)
+                arcTo(0.9f, 0.9f, 0f, isMoreThanHalf = true, isPositiveArc = true, 7.49f, 15.6f)
+                close()
+            }
+        }.build()
+    }
+
+    val ChevronRight: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "ChevronRight",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(9.5f, 6.5f)
+                lineTo(15f, 12f)
+                lineTo(9.5f, 17.5f)
+            }
+        }.build()
+    }
 }

@@ -33,6 +33,7 @@ import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -243,6 +244,52 @@ fun HistoryDetailScreen(
                             wifiBandLabel = result.wifiBand,
                             cellularNetworkTag = result.cellularNetworkTag,
                         )
+                    }
+
+                    val serverName = result.serverName?.trim()?.takeIf { it.isNotEmpty() }
+                    if (serverName != null) {
+                        val serverLocation = result.serverLocation?.trim()?.takeIf { it.isNotEmpty() }
+                        val serverLabel = if (serverLocation != null) {
+                            "$serverName · $serverLocation"
+                        } else {
+                            serverName
+                        }
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .testTag("detail_server_row"),
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.surfaceContainer,
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(10.dp),
+                            ) {
+                                Icon(
+                                    imageVector = SpeedTestIcons.Server,
+                                    contentDescription = stringResource(R.string.cd_server_icon),
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(18.dp),
+                                )
+                                Text(
+                                    text = stringResource(R.string.server_row_label),
+                                    style = MaterialTheme.typography.labelLarge,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    maxLines = 1,
+                                )
+                                Text(
+                                    text = serverLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    maxLines = 1,
+                                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis,
+                                    modifier = Modifier.weight(1f),
+                                )
+                            }
+                        }
                     }
 
                     ThroughputCardsRow(

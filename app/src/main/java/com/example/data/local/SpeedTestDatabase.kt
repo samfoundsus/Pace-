@@ -9,7 +9,7 @@ import androidx.sqlite.db.SupportSQLiteDatabase
 
 @Database(
     entities = [TestResultEntity::class],
-    version = 3,
+    version = 4,
     exportSchema = false,
 )
 abstract class SpeedTestDatabase : RoomDatabase() {
@@ -33,6 +33,13 @@ abstract class SpeedTestDatabase : RoomDatabase() {
             }
         }
 
+        val MIGRATION_3_4: Migration = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE test_results ADD COLUMN serverName TEXT")
+                db.execSQL("ALTER TABLE test_results ADD COLUMN serverLocation TEXT")
+            }
+        }
+
         fun getInstance(context: Context): SpeedTestDatabase {
             return instance ?: synchronized(this) {
                 instance ?: Room.databaseBuilder(
@@ -40,7 +47,7 @@ abstract class SpeedTestDatabase : RoomDatabase() {
                     SpeedTestDatabase::class.java,
                     "speedtest_history.db",
                 )
-                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                    .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                     .build()
                     .also { instance = it }
             }

@@ -1,15 +1,27 @@
 package com.example.engine.speedtest
 
 import com.example.data.constants.SpeedTestConstants
+import com.example.engine.server.SafeServerDns
+import com.example.engine.server.SameHostHttpsRedirectInterceptor
 import okhttp3.ConnectionPool
 import okhttp3.Dispatcher
 import okhttp3.OkHttpClient
 import okhttp3.Protocol
+import java.io.IOException
 import java.util.concurrent.TimeUnit
+
+/**
+ * Thrown when a speed test phase receives or transmits zero bytes within the initial stall window
+ * (e.g., 5 seconds), signaling that the engine should fall back to Cloudflare.
+ */
+class ServerNoDataTimeoutException(
+    message: String = "Server returned no data within timeout",
+) : IOException(message)
 
 /**
  * Builds properly tuned OkHttpClient instances for parallel throughput streams,
  * single-connection unloaded ping, and separate-connection loaded latency probes.
+ * All clients enforce public-routable DNS resolution and block cross-host or HTTP redirects.
  */
 object SpeedTestClientFactory {
 
@@ -30,7 +42,11 @@ object SpeedTestClientFactory {
         return OkHttpClient.Builder()
             .dispatcher(dispatcher)
             .connectionPool(connectionPool)
+            .dns(SafeServerDns)
             .protocols(listOf(Protocol.HTTP_1_1))
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .addInterceptor(SameHostHttpsRedirectInterceptor())
             .connectTimeout(SpeedTestConstants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(SpeedTestConstants.READ_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .writeTimeout(SpeedTestConstants.WRITE_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -48,7 +64,11 @@ object SpeedTestClientFactory {
         val connectionPool = ConnectionPool(1, 30, TimeUnit.SECONDS)
         return OkHttpClient.Builder()
             .connectionPool(connectionPool)
+            .dns(SafeServerDns)
             .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .addInterceptor(SameHostHttpsRedirectInterceptor())
             .connectTimeout(SpeedTestConstants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(SpeedTestConstants.PING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .callTimeout(SpeedTestConstants.PING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
@@ -65,7 +85,11 @@ object SpeedTestClientFactory {
         val connectionPool = ConnectionPool(1, 30, TimeUnit.SECONDS)
         return OkHttpClient.Builder()
             .connectionPool(connectionPool)
+            .dns(SafeServerDns)
             .protocols(listOf(Protocol.HTTP_2, Protocol.HTTP_1_1))
+            .followRedirects(false)
+            .followSslRedirects(false)
+            .addInterceptor(SameHostHttpsRedirectInterceptor())
             .connectTimeout(SpeedTestConstants.CONNECT_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .readTimeout(SpeedTestConstants.LOADED_PING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)
             .callTimeout(SpeedTestConstants.LOADED_PING_CALL_TIMEOUT_SECONDS, TimeUnit.SECONDS)

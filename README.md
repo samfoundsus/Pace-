@@ -16,7 +16,7 @@ A small, clean internet speed test for Android. It measures download, upload, pi
 
 ## Privacy
 
-No accounts, no ads and no analytics. Your history stays on your device. To work, the app talks to a few public services: Cloudflare's speed test endpoints for the tests, and ipwho.is and ipify to look up your public IP and ISP. The DNS benchmark sends ordinary DNS queries to the public resolvers listed above.
+No accounts, no ads and no analytics. Your history stays on your device. To work, the app talks to a few public services: Cloudflare's speed test endpoints and any community or custom LibreSpeed servers you select for tests, plus ipwho.is and ipify to look up your public IP and ISP. Servers you test against, including community ones, can see your IP address and the test traffic. A public server list is fetched from librespeed.org when you open the server selector or run Auto (cached for 24 hours). The DNS benchmark sends ordinary DNS queries to the public resolvers listed above.
 
 The app asks for a permission only when you use the feature that needs it: location, to show your Wi-Fi name, and phone state, to show whether you are on 4G or 5G. Nothing is requested when the app opens.
 

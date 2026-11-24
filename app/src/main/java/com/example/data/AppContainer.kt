@@ -3,6 +3,7 @@ package com.example.data
 import android.content.Context
 import com.example.data.local.HistoryRepository
 import com.example.data.local.SpeedTestDatabase
+import com.example.data.server.ServerRepository
 import com.example.data.settings.SettingsRepository
 
 /**
@@ -21,6 +22,10 @@ class AppContainer private constructor(context: Context) {
 
     val settingsRepository: SettingsRepository by lazy {
         SettingsRepository(appContext)
+    }
+
+    val serverRepository: ServerRepository by lazy {
+        ServerRepository(appContext)
     }
 
     companion object {

@@ -15,6 +15,11 @@ import com.example.data.models.SpeedTestError
 import com.example.data.models.SpeedTestProgress
 import com.example.data.models.TestResult
 import com.example.data.models.TestStage
+import com.example.data.server.CustomServerResult
+import com.example.data.server.ServerKind
+import com.example.data.server.ServerProfile
+import com.example.data.server.ServerRepository
+import com.example.data.server.ServerSelectorUiState
 import com.example.data.settings.SettingsRepository
 import com.example.data.settings.UserSettings
 import com.example.engine.download.DownloadEngine
@@ -45,6 +50,11 @@ enum class GaugeDisplayMetric {
 enum class HapticCue {
     TEST_STARTED,
     TEST_FINISHED,
+}
+
+sealed interface SnackbarNotice {
+    data class SavedServerUnreachable(val serverName: String) : SnackbarNotice
+    data class ServerSwitchedToCloudflare(val previousServerName: String) : SnackbarNotice
 }
 
 @Immutable
@@ -81,6 +91,9 @@ data class SpeedTestUiState(
     val gaugeDisplayMetric: GaugeDisplayMetric = GaugeDisplayMetric.DOWNLOAD,
     val error: SpeedTestError? = null,
     val showMobileDataWarning: Boolean = false,
+    val serverSelector: ServerSelectorUiState = ServerSelectorUiState(),
+    val activeTestServer: ServerProfile? = null,
+    val isResolvingServer: Boolean = false,
 ) {
     val gaugeSpeedMbps: Double
         get() = if (stage == TestStage.COMPLETED && completedResult != null) {
@@ -130,23 +143,29 @@ data class SpeedTestUiState(
 /**
  * ViewModel for the Pace Test screen.
  * Keeps UI free of OkHttp and networking code, auto-saves completed tests once to Room,
- * and applies user preferences from DataStore.
+ * manages server selection and automatic Cloudflare fallback notices, and applies user preferences.
  */
 class SpeedTestViewModel(
     private val speedTestEngine: SpeedTestEngine,
     private val networkMonitor: NetworkMonitor,
     private val historyRepository: HistoryRepository,
     private val settingsRepository: SettingsRepository,
+    private val serverRepository: ServerRepository,
     private val managedClients: List<OkHttpClient> = emptyList(),
 ) : ViewModel() {
 
     private val _uiState = MutableStateFlow(
-        initialStateFromSnapshot(networkMonitor.currentSnapshot()),
+        initialStateFromSnapshot(networkMonitor.currentSnapshot()).copy(
+            serverSelector = serverRepository.selectorState.value,
+        ),
     )
     val uiState: StateFlow<SpeedTestUiState> = _uiState.asStateFlow()
 
     private val _hapticEvents = MutableSharedFlow<HapticCue>(extraBufferCapacity = 4)
     val hapticEvents: SharedFlow<HapticCue> = _hapticEvents.asSharedFlow()
+
+    private val _snackbarNotices = MutableSharedFlow<SnackbarNotice>(extraBufferCapacity = 4)
+    val snackbarNotices: SharedFlow<SnackbarNotice> = _snackbarNotices.asSharedFlow()
 
     private var currentSettings: UserSettings = UserSettings()
     private var activeTestJob: Job? = null
@@ -162,7 +181,62 @@ class SpeedTestViewModel(
         viewModelScope.launch {
             settingsRepository.settings.collect { settings ->
                 currentSettings = settings
+                serverRepository.onIncludeCommunitySettingChanged(settings.includeCommunityServers)
             }
+        }
+        viewModelScope.launch {
+            serverRepository.selectorState.collect { selector ->
+                _uiState.update { state -> state.copy(serverSelector = selector) }
+            }
+        }
+    }
+
+    fun onOpenServerSelector() {
+        serverRepository.onSelectorOpened(currentSettings.includeCommunityServers)
+    }
+
+    fun onRefreshServers() {
+        serverRepository.refreshServers(
+            includeCommunityServers = currentSettings.includeCommunityServers,
+            forceFetchCommunity = true,
+        )
+    }
+
+    fun onSelectServer(serverId: String) {
+        viewModelScope.launch {
+            serverRepository.selectServer(serverId)
+            _uiState.update { it.copy(activeTestServer = null) }
+        }
+    }
+
+    fun onAddCustomServer(
+        name: String,
+        baseUrl: String,
+        downloadPath: String,
+        uploadPath: String,
+        pingPath: String,
+        getIpPath: String,
+        onResult: (CustomServerResult) -> Unit,
+    ) {
+        viewModelScope.launch {
+            val result = serverRepository.validateAndAddCustomServer(
+                name = name,
+                baseUrl = baseUrl,
+                downloadPath = downloadPath,
+                uploadPath = uploadPath,
+                pingPath = pingPath,
+                getIpPath = getIpPath,
+            )
+            if (result is CustomServerResult.Success) {
+                _uiState.update { it.copy(activeTestServer = result.profile) }
+            }
+            onResult(result)
+        }
+    }
+
+    fun onDeleteCustomServer(serverId: String) {
+        viewModelScope.launch {
+            serverRepository.deleteCustomServer(serverId)
         }
     }
 
@@ -261,6 +335,7 @@ class SpeedTestViewModel(
             state.copy(
                 stage = TestStage.IDLE,
                 isRunning = false,
+                isResolvingServer = false,
                 isWarmingUp = false,
                 stageProgress = 0f,
                 liveSpeedMbps = 0.0,
@@ -287,6 +362,7 @@ class SpeedTestViewModel(
     private fun startSpeedTest() {
         activeTestJob?.cancel()
         val useLiteMode = currentSettings.liteMode
+        val includeCommunity = currentSettings.includeCommunityServers
         val durationSec = if (useLiteMode) {
             SpeedTestConstants.DOWNLOAD_LITE_DURATION_MS / 1000f
         } else {
@@ -301,6 +377,7 @@ class SpeedTestViewModel(
             state.copy(
                 stage = TestStage.PING,
                 isRunning = true,
+                isResolvingServer = true,
                 isWarmingUp = false,
                 stageProgress = 0f,
                 phaseDurationSeconds = durationSec,
@@ -321,7 +398,25 @@ class SpeedTestViewModel(
         }
 
         activeTestJob = viewModelScope.launch {
-            speedTestEngine.runSpeedTest(liteMode = useLiteMode).collect { event ->
+            val resolved = serverRepository.resolveServerForTest(
+                includeCommunityServers = includeCommunity,
+            )
+            if (resolved.fellBackFromServerName != null) {
+                _snackbarNotices.tryEmit(
+                    SnackbarNotice.SavedServerUnreachable(resolved.fellBackFromServerName),
+                )
+            }
+            _uiState.update { state ->
+                state.copy(
+                    isResolvingServer = false,
+                    activeTestServer = resolved.server,
+                )
+            }
+
+            speedTestEngine.runSpeedTest(
+                server = resolved.server,
+                liteMode = useLiteMode,
+            ).collect { event ->
                 handleProgress(event)
             }
         }
@@ -329,13 +424,35 @@ class SpeedTestViewModel(
 
     private fun handleProgress(event: SpeedTestProgress) {
         when (event) {
+            is SpeedTestProgress.ServerActive -> {
+                if (event.server.kind == ServerKind.CLOUDFLARE && event.server.location.isNotBlank()) {
+                    serverRepository.updateCloudflareLocation(event.server.location)
+                }
+                _uiState.update { state ->
+                    state.copy(activeTestServer = event.server)
+                }
+            }
+
+            is SpeedTestProgress.ServerFallback -> {
+                _snackbarNotices.tryEmit(
+                    SnackbarNotice.ServerSwitchedToCloudflare(event.previousServerName),
+                )
+                _uiState.update { state ->
+                    state.copy(activeTestServer = event.fallbackServer)
+                }
+            }
+
             is SpeedTestProgress.StageStarted -> {
                 _uiState.update { state ->
                     state.copy(
                         stage = event.stage,
                         isWarmingUp = event.stage == TestStage.DOWNLOAD || event.stage == TestStage.UPLOAD,
                         stageProgress = 0f,
-                        liveSpeedMbps = if (event.stage == TestStage.PING) 0.0 else state.liveSpeedMbps,
+                        liveSpeedMbps = 0.0,
+                        downloadSamples = if (event.stage == TestStage.DOWNLOAD) emptyList() else state.downloadSamples,
+                        uploadSamples = if (event.stage == TestStage.UPLOAD) emptyList() else state.uploadSamples,
+                        liveDownloadLoadedLatencyMs = if (event.stage == TestStage.DOWNLOAD) null else state.liveDownloadLoadedLatencyMs,
+                        liveUploadLoadedLatencyMs = if (event.stage == TestStage.UPLOAD) null else state.liveUploadLoadedLatencyMs,
                     )
                 }
             }
@@ -424,10 +541,14 @@ class SpeedTestViewModel(
 
             is SpeedTestProgress.Completed -> {
                 val result = event.result
+                if (result.serverName == ServerProfile.CLOUDFLARE.name && !result.serverLocation.isNullOrBlank()) {
+                    serverRepository.updateCloudflareLocation(result.serverLocation)
+                }
                 _uiState.update { state ->
                     state.copy(
                         stage = TestStage.COMPLETED,
                         isRunning = false,
+                        isResolvingServer = false,
                         isWarmingUp = false,
                         stageProgress = 1f,
                         liveSpeedMbps = result.download ?: 0.0,
@@ -449,6 +570,7 @@ class SpeedTestViewModel(
                     state.copy(
                         stage = TestStage.IDLE,
                         isRunning = false,
+                        isResolvingServer = false,
                         isWarmingUp = false,
                         stageProgress = 0f,
                         liveSpeedMbps = 0.0,
@@ -539,6 +661,7 @@ class SpeedTestViewModel(
                     networkMonitor = networkMonitor,
                     historyRepository = container.historyRepository,
                     settingsRepository = container.settingsRepository,
+                    serverRepository = container.serverRepository,
                     managedClients = listOf(throughputClient, latencyClient, loadedLatencyClient),
                 ) as T
             }

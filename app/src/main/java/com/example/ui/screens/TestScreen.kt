@@ -59,6 +59,7 @@ import com.example.R
 import com.example.data.models.SpeedTestError
 import com.example.data.models.TestResult
 import com.example.data.models.TestStage
+import com.example.data.server.CustomServerResult
 import com.example.data.settings.SpeedUnit
 import com.example.engine.export.ResultCardRenderer
 import com.example.ui.components.BufferbloatCard
@@ -69,6 +70,8 @@ import com.example.ui.components.KeepScreenOnEffect
 import com.example.ui.components.LiveSpeedGraph
 import com.example.ui.components.MobileDataWarningDialog
 import com.example.ui.components.OoklaLatencyRow
+import com.example.ui.components.ServerSelectorRow
+import com.example.ui.components.ServerSelectorSheet
 import com.example.ui.components.SpeedGauge
 import com.example.ui.components.SpeedTestIcons
 import com.example.ui.components.ThroughputCardsRow
@@ -94,12 +97,26 @@ fun TestScreen(
     onWifiPermissionResult: (granted: Boolean, permanentlyDenied: Boolean) -> Unit,
     onPhonePermissionResult: (granted: Boolean) -> Unit = {},
     onRefreshConnectionInfo: () -> Unit,
+    onOpenServerSelector: () -> Unit = {},
+    onRefreshServers: () -> Unit = {},
+    onSelectServer: (String) -> Unit = {},
+    onAddCustomServer: (
+        name: String,
+        baseUrl: String,
+        downloadPath: String,
+        uploadPath: String,
+        pingPath: String,
+        getIpPath: String,
+        onResult: (CustomServerResult) -> Unit,
+    ) -> Unit = { _, _, _, _, _, _, _ -> },
+    onDeleteCustomServer: (String) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     var isSharingCard by remember { mutableStateOf(false) }
+    var showServerSheet by remember { mutableStateOf(false) }
 
     // Keep screen awake strictly while a speed test is actively running.
     KeepScreenOnEffect(enabled = uiState.isRunning)
@@ -188,6 +205,17 @@ fun TestScreen(
         )
     }
 
+    if (showServerSheet) {
+        ServerSelectorSheet(
+            selectorState = uiState.serverSelector,
+            onDismiss = { showServerSheet = false },
+            onSelectServer = onSelectServer,
+            onRefresh = onRefreshServers,
+            onAddCustomServer = onAddCustomServer,
+            onDeleteCustomServer = onDeleteCustomServer,
+        )
+    }
+
     val activeSamples = when (uiState.activeGraphStage) {
         TestStage.UPLOAD -> uiState.uploadSamples
         TestStage.DOWNLOAD -> uiState.downloadSamples
@@ -243,6 +271,17 @@ fun TestScreen(
                         onStartClick = onStartClick,
                         onCancelClick = onCancelClick,
                         onShareClick = { completedResult?.let(handleShareResult) },
+                        modifier = Modifier.widthIn(min = 220.dp, max = 380.dp),
+                    )
+                    ServerSelectorRow(
+                        selectorState = uiState.serverSelector,
+                        activeTestServer = uiState.activeTestServer,
+                        isRunning = uiState.isRunning,
+                        isResolvingServer = uiState.isResolvingServer,
+                        onClick = {
+                            onOpenServerSelector()
+                            showServerSheet = true
+                        },
                         modifier = Modifier.widthIn(min = 220.dp, max = 380.dp),
                     )
                     ConnectionInfoLine(
@@ -348,6 +387,20 @@ fun TestScreen(
                     onStartClick = onStartClick,
                     onCancelClick = onCancelClick,
                     onShareClick = { completedResult?.let(handleShareResult) },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .widthIn(max = 560.dp),
+                )
+
+                ServerSelectorRow(
+                    selectorState = uiState.serverSelector,
+                    activeTestServer = uiState.activeTestServer,
+                    isRunning = uiState.isRunning,
+                    isResolvingServer = uiState.isResolvingServer,
+                    onClick = {
+                        onOpenServerSelector()
+                        showServerSheet = true
+                    },
                     modifier = Modifier
                         .fillMaxWidth()
                         .widthIn(max = 560.dp),

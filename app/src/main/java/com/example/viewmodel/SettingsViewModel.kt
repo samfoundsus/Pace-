@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppContainer
+import com.example.data.server.ServerRepository
 import com.example.data.settings.SettingsRepository
 import com.example.data.settings.SpeedUnit
 import com.example.data.settings.ThemeMode
@@ -19,6 +20,7 @@ import kotlinx.coroutines.launch
  */
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
+    private val serverRepository: ServerRepository,
 ) : ViewModel() {
 
     val settings: StateFlow<UserSettings> = settingsRepository.settings
@@ -64,12 +66,22 @@ class SettingsViewModel(
         }
     }
 
+    fun setIncludeCommunityServers(enabled: Boolean) {
+        viewModelScope.launch {
+            settingsRepository.setIncludeCommunityServers(enabled)
+            serverRepository.onIncludeCommunitySettingChanged(enabled)
+        }
+    }
+
     companion object {
         fun factory(context: Context): ViewModelProvider.Factory = object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T {
                 val container = AppContainer.getInstance(context.applicationContext)
-                return SettingsViewModel(container.settingsRepository) as T
+                return SettingsViewModel(
+                    settingsRepository = container.settingsRepository,
+                    serverRepository = container.serverRepository,
+                ) as T
             }
         }
     }

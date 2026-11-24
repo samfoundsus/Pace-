@@ -1,6 +1,10 @@
 package com.example.engine.latency
 
 import com.example.data.constants.SpeedTestConstants
+import com.example.data.server.CloudflareColoMapper
+import com.example.data.server.ServerKind
+import com.example.data.server.ServerProfile
+import com.example.engine.server.ServerUrlValidator
 import com.example.engine.speedtest.SpeedMath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -27,6 +31,7 @@ data class LatencyMeasurement(
     val pingMs: Double?,
     val jitterMs: Double?,
     val samplesMs: List<Double>,
+    val cfRayLocation: String? = null,
 )
 
 class ServerHttpException(val statusCode: Int) : IOException("Unexpected HTTP status $statusCode")
@@ -34,9 +39,11 @@ class ServerHttpException(val statusCode: Int) : IOException("Unexpected HTTP st
 /**
  * Modular latency measurement engine.
  * - Reuses a single persistent connection per client (HTTP/2 with HTTP/1.1 fallback).
+ * - Uses [ServerProfile.pingUrl] so no endpoint URL is hard-coded.
  * - Measures pure HTTP request-to-response RTT in Double milliseconds via OkHttp's EventListener
  *   (requestHeadersStart -> responseHeadersEnd) so DNS, TCP connect, IPv6 fallback, and TLS
  *   handshakes are never included in ping or jitter samples.
+ * - Caps response body draining so untrusted servers cannot consume excessive memory.
  * - Sends one throwaway warm-up request (never counted) before measuring idle RTT samples.
  */
 class LatencyEngine internal constructor(
@@ -73,14 +80,15 @@ class LatencyEngine internal constructor(
 
     /**
      * Executes a single lightweight HTTP RTT probe measured in Double milliseconds
-     * (nanoseconds / 1_000_000.0). Uses OkHttp's EventListener to time strictly from
-     * requestHeadersStart to responseHeadersEnd so connection setup (DNS, TCP, TLS) is excluded.
+     * (nanoseconds / 1_000_000.0) against [server].
      */
     suspend fun measureSingleRttMs(
+        server: ServerProfile = ServerProfile.CLOUDFLARE,
         callTimeoutMs: Long = SpeedTestConstants.PING_CALL_TIMEOUT_SECONDS * 1_000L,
+        onCfRayLocation: ((String) -> Unit)? = null,
     ): Double = withContext(Dispatchers.IO) {
         val request = Request.Builder()
-            .url(SpeedTestConstants.pingUrl(System.nanoTime()))
+            .url(server.pingUrl(System.nanoTime()))
             .cacheControl(noStoreCacheControl)
             .header("Accept-Encoding", "identity")
             .get()
@@ -103,11 +111,16 @@ class LatencyEngine internal constructor(
         try {
             val fallbackStartNanos = System.nanoTime()
             val elapsedMs = call.execute().use { response ->
+                if (server.kind == ServerKind.CLOUDFLARE) {
+                    CloudflareColoMapper.locationFromCfRay(response.header("cf-ray"))?.let { loc ->
+                        onCfRayLocation?.invoke(loc)
+                    }
+                }
                 if (!response.isSuccessful) {
                     throw ServerHttpException(response.code)
                 }
-                // Drain 0-byte body so OkHttp marks the connection reusable immediately
-                response.body?.bytes()
+                // Drain bounded body so OkHttp marks the connection reusable without unbounded reads
+                ServerUrlValidator.drainBounded(response.body, ServerUrlValidator.MAX_PING_RESPONSE_BYTES)
                 val fallbackEndNanos = System.nanoTime()
 
                 val rttNanos = if (
@@ -134,12 +147,9 @@ class LatencyEngine internal constructor(
     /**
      * Sends one throwaway warm-up request (never counted) to establish TCP + TLS on a fresh
      * persistent connection, then measures [requestCount] sequential idle probes in Double ms.
-     * - Timed-out samples are discarded instead of recording a timeout duration.
-     * - Partial live jitter is never emitted while the ping phase is still running.
-     * - Final ping (median) and final jitter (average absolute consecutive difference) are both
-     *   calculated strictly from the same counted idle samples list.
      */
     suspend fun measureUnloadedLatency(
+        server: ServerProfile = ServerProfile.CLOUDFLARE,
         requestCount: Int = SpeedTestConstants.PING_REQUEST_COUNT,
         onSample: suspend (
             completed: Int,
@@ -158,8 +168,17 @@ class LatencyEngine internal constructor(
         val probeTimeoutMs = SpeedTestConstants.PING_PROBE_TIMEOUT_MS
         val probeTimeoutCeilingMs = probeTimeoutMs.toDouble()
 
+        var discoveredCfLocation: String? = null
+        val captureLocation: (String) -> Unit = { loc ->
+            if (discoveredCfLocation == null) discoveredCfLocation = loc
+        }
+
         // One throwaway warm-up request (connection setup + TLS handshake): never counted.
-        executeProbeRttMs(callTimeoutMs = warmupTimeoutMs)
+        executeProbeRttMs(
+            server = server,
+            callTimeoutMs = warmupTimeoutMs,
+            onCfRayLocation = captureLocation,
+        )
         if (probeSpacingMs > 0L) {
             delay(probeSpacingMs)
         }
@@ -170,12 +189,15 @@ class LatencyEngine internal constructor(
         for (index in 1..requestCount) {
             if (!currentCoroutineContext().isActive) break
             val rttMs = try {
-                executeProbeRttMs(callTimeoutMs = probeTimeoutMs)
+                executeProbeRttMs(
+                    server = server,
+                    callTimeoutMs = probeTimeoutMs,
+                    onCfRayLocation = captureLocation,
+                )
             } catch (ce: CancellationException) {
                 throw ce
             } catch (e: IOException) {
                 if (e.isTimeoutException()) {
-                    // Discard timed-out sample instead of using the timeout duration
                     lastTimeoutException = e
                     if (index < requestCount && probeSpacingMs > 0L) {
                         delay(probeSpacingMs)
@@ -208,19 +230,27 @@ class LatencyEngine internal constructor(
             pingMs = finalPingMs,
             jitterMs = finalJitterMs,
             samplesMs = countedIdleSamples,
+            cfRayLocation = discoveredCfLocation,
         )
     }
 
     /**
      * Continuous latency probe stream used concurrently during download and upload phases
      * to measure loaded latency (bufferbloat) on a separate connection.
-     * Loaded latency samples are never used in unloaded jitter calculation.
      */
-    fun probeFlow(intervalMs: Long = SpeedTestConstants.LOADED_LATENCY_INTERVAL_MS): Flow<Double> = flow {
+    fun probeFlow(
+        server: ServerProfile = ServerProfile.CLOUDFLARE,
+        intervalMs: Long = SpeedTestConstants.LOADED_LATENCY_INTERVAL_MS,
+        onCfRayLocation: ((String) -> Unit)? = null,
+    ): Flow<Double> = flow {
         val loadedTimeoutMs = SpeedTestConstants.LOADED_PING_CALL_TIMEOUT_SECONDS * 1_000L
         // Warm up the dedicated loaded-latency connection (throwaway, not emitted)
         try {
-            executeProbeRttMs(callTimeoutMs = loadedTimeoutMs)
+            executeProbeRttMs(
+                server = server,
+                callTimeoutMs = loadedTimeoutMs,
+                onCfRayLocation = onCfRayLocation,
+            )
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: IOException) {
@@ -231,7 +261,11 @@ class LatencyEngine internal constructor(
         while (currentCoroutineContext().isActive) {
             val tickStartMs = System.nanoTime() / 1_000_000L
             try {
-                val rttMs = executeProbeRttMs(callTimeoutMs = loadedTimeoutMs)
+                val rttMs = executeProbeRttMs(
+                    server = server,
+                    callTimeoutMs = loadedTimeoutMs,
+                    onCfRayLocation = onCfRayLocation,
+                )
                 if (rttMs.isFinite() && rttMs > 0.0 && rttMs < timeoutCeilingMs) {
                     emit(rttMs)
                 }
@@ -246,8 +280,15 @@ class LatencyEngine internal constructor(
         }
     }.flowOn(Dispatchers.IO)
 
-    private suspend fun executeProbeRttMs(callTimeoutMs: Long): Double =
-        singleProbeOverride?.invoke() ?: measureSingleRttMs(callTimeoutMs = callTimeoutMs)
+    private suspend fun executeProbeRttMs(
+        server: ServerProfile,
+        callTimeoutMs: Long,
+        onCfRayLocation: ((String) -> Unit)?,
+    ): Double = singleProbeOverride?.invoke() ?: measureSingleRttMs(
+        server = server,
+        callTimeoutMs = callTimeoutMs,
+        onCfRayLocation = onCfRayLocation,
+    )
 
     private fun IOException.isTimeoutException(): Boolean {
         if (this is SocketTimeoutException || this is InterruptedIOException) {

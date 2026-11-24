@@ -12,12 +12,16 @@ import com.example.data.models.ConnectionType
 import com.example.data.models.SpeedSample
 import com.example.data.models.SpeedTestError
 import com.example.data.models.TestStage
+import com.example.data.server.ServerKind
+import com.example.data.server.ServerProfile
+import com.example.data.server.ServerRepository
 import com.example.data.settings.SettingsRepository
 import com.example.data.settings.UserSettings
 import com.example.engine.download.DownloadEngine
 import com.example.engine.download.DownloadEvent
 import com.example.engine.latency.ServerHttpException
 import com.example.engine.speedtest.NetworkMonitor
+import com.example.engine.speedtest.ServerNoDataTimeoutException
 import com.example.engine.speedtest.SpeedTestClientFactory
 import com.example.engine.speedtest.WifiBand
 import com.example.engine.tools.ExtendedDuration
@@ -94,7 +98,8 @@ data class ExtendedTestUiState(
 
 /**
  * ViewModel for the Extended Test tool (30s or 60s per phase).
- * Emits throttled (~8 Hz) smoothed throughput samples into dedicated StateFlow lists per phase,
+ * Uses the active server resolved from [ServerRepository] (with Cloudflare fallback if stalled),
+ * emits throttled (~8 Hz) smoothed throughput samples into dedicated StateFlow lists per phase,
  * caps graph series at 300 points, excludes the 1.5s warm-up from Stability summary statistics,
  * preserves partial graphs on cancel or error, and intentionally never persists results to History.
  */
@@ -104,6 +109,7 @@ class ExtendedTestViewModel(
     private val networkMonitor: NetworkMonitor,
     private val historyRepository: HistoryRepository,
     private val settingsRepository: SettingsRepository,
+    private val serverRepository: ServerRepository,
     private val throughputClient: OkHttpClient,
 ) : ViewModel() {
 
@@ -250,6 +256,7 @@ class ExtendedTestViewModel(
         val durationSeconds = duration.seconds
         val durationMs = durationSeconds * 1000L
         val initialSnapshot = networkMonitor.currentSnapshot()
+        val includeCommunity = currentSettings.includeCommunityServers
 
         _downloadSamples.value = emptyList()
         _uploadSamples.value = emptyList()
@@ -277,6 +284,10 @@ class ExtendedTestViewModel(
             val networkInterruption = AtomicReference<SpeedTestError?>(null)
 
             try {
+                var activeServer = serverRepository.resolveServerForTest(
+                    includeCommunityServers = includeCommunity,
+                ).server
+
                 coroutineScope {
                     var executionJob: Job? = null
 
@@ -300,14 +311,19 @@ class ExtendedTestViewModel(
                         }
                     }
 
-                    executionJob = launch(Dispatchers.IO) {
-                        // Phase 1: Sustained Download
+                    suspend fun collectDownload(server: ServerProfile) {
                         var lastDownloadEmitNanos = 0L
                         downloadEngine.measureDownload(
+                            server = server,
                             streamCount = SpeedTestConstants.DOWNLOAD_STREAM_COUNT,
                             durationMs = durationMs,
                             warmUpMs = SpeedTestConstants.DOWNLOAD_WARMUP_MS,
                             sampleIntervalMs = SpeedTestConstants.SAMPLE_INTERVAL_MS,
+                            noDataTimeoutMs = if (server.kind != ServerKind.CLOUDFLARE) {
+                                SpeedTestConstants.NO_DATA_FALLBACK_TIMEOUT_MS
+                            } else {
+                                null
+                            },
                         ).collect { event ->
                             when (event) {
                                 is DownloadEvent.Progress -> {
@@ -338,40 +354,21 @@ class ExtendedTestViewModel(
                                 is DownloadEvent.Completed -> Unit
                             }
                         }
+                    }
 
-                        // Flush final download curve snapshot
-                        val finalDownloadGraph = ExtendedTestStats.downsampleSamples(
-                            allDownloadSamples,
-                            ExtendedTestStats.MAX_GRAPH_POINTS,
-                        )
-                        _downloadSamples.value = finalDownloadGraph
-
-                        val downloadSummary = ExtendedTestStats.computePhaseSummaryExcludingWarmup(
-                            allSamples = allDownloadSamples,
-                            warmUpSeconds = ExtendedTestStats.WARMUP_SECONDS,
-                        )
-                        if (finalDownloadGraph.isEmpty() || downloadSummary == null) {
-                            throw IOException("No download throughput samples collected")
-                        }
-
-                        _uiState.update { state ->
-                            state.copy(
-                                stage = TestStage.UPLOAD,
-                                isWarmingUp = true,
-                                elapsedSeconds = 0,
-                                liveSpeedMbps = 0.0,
-                                downloadSamples = finalDownloadGraph,
-                                downloadSummary = downloadSummary,
-                            )
-                        }
-
-                        // Phase 2: Sustained Upload
+                    suspend fun collectUpload(server: ServerProfile) {
                         var lastUploadEmitNanos = 0L
                         uploadEngine.measureUpload(
+                            server = server,
                             streamCount = SpeedTestConstants.UPLOAD_STREAM_COUNT,
                             durationMs = durationMs,
                             warmUpMs = SpeedTestConstants.UPLOAD_WARMUP_MS,
                             sampleIntervalMs = SpeedTestConstants.SAMPLE_INTERVAL_MS,
+                            noDataTimeoutMs = if (server.kind != ServerKind.CLOUDFLARE) {
+                                SpeedTestConstants.NO_DATA_FALLBACK_TIMEOUT_MS
+                            } else {
+                                null
+                            },
                         ).collect { event ->
                             when (event) {
                                 is UploadEvent.Progress -> {
@@ -400,6 +397,62 @@ class ExtendedTestViewModel(
                                     }
                                 }
                                 is UploadEvent.Completed -> Unit
+                            }
+                        }
+                    }
+
+                    executionJob = launch(Dispatchers.IO) {
+                        // Phase 1: Sustained Download (with Cloudflare fallback on 5s stall)
+                        try {
+                            collectDownload(activeServer)
+                        } catch (e: IOException) {
+                            if (activeServer.kind != ServerKind.CLOUDFLARE && networkInterruption.get() == null) {
+                                allDownloadSamples.clear()
+                                _downloadSamples.value = emptyList()
+                                activeServer = ServerProfile.CLOUDFLARE
+                                collectDownload(activeServer)
+                            } else {
+                                throw e
+                            }
+                        }
+
+                        // Flush final download curve snapshot
+                        val finalDownloadGraph = ExtendedTestStats.downsampleSamples(
+                            allDownloadSamples,
+                            ExtendedTestStats.MAX_GRAPH_POINTS,
+                        )
+                        _downloadSamples.value = finalDownloadGraph
+
+                        val downloadSummary = ExtendedTestStats.computePhaseSummaryExcludingWarmup(
+                            allSamples = allDownloadSamples,
+                            warmUpSeconds = ExtendedTestStats.WARMUP_SECONDS,
+                        )
+                        if (finalDownloadGraph.isEmpty() || downloadSummary == null) {
+                            throw IOException("No download throughput samples collected")
+                        }
+
+                        _uiState.update { state ->
+                            state.copy(
+                                stage = TestStage.UPLOAD,
+                                isWarmingUp = true,
+                                elapsedSeconds = 0,
+                                liveSpeedMbps = 0.0,
+                                downloadSamples = finalDownloadGraph,
+                                downloadSummary = downloadSummary,
+                            )
+                        }
+
+                        // Phase 2: Sustained Upload (with Cloudflare fallback on 5s stall)
+                        try {
+                            collectUpload(activeServer)
+                        } catch (e: IOException) {
+                            if (activeServer.kind != ServerKind.CLOUDFLARE && networkInterruption.get() == null) {
+                                allUploadSamples.clear()
+                                _uploadSamples.value = emptyList()
+                                activeServer = ServerProfile.CLOUDFLARE
+                                collectUpload(activeServer)
+                            } else {
+                                throw e
                             }
                         }
 
@@ -505,7 +558,7 @@ class ExtendedTestViewModel(
     private fun mapThrowable(t: Throwable): SpeedTestError = when (t) {
         is SocketTimeoutException -> SpeedTestError.Timeout
         is UnknownHostException -> SpeedTestError.ServerUnreachable
-        is ServerHttpException -> SpeedTestError.ServerUnreachable
+        is ServerHttpException, is ServerNoDataTimeoutException -> SpeedTestError.ServerUnreachable
         is IOException -> SpeedTestError.ServerUnreachable
         else -> SpeedTestError.Unknown
     }
@@ -535,6 +588,7 @@ class ExtendedTestViewModel(
                     networkMonitor = NetworkMonitor(appContext),
                     historyRepository = container.historyRepository,
                     settingsRepository = container.settingsRepository,
+                    serverRepository = container.serverRepository,
                     throughputClient = throughputClient,
                 ) as T
             }

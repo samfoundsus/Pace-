@@ -23,6 +23,8 @@ import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationRailItem
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SnackbarHost
+import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -55,6 +57,7 @@ import com.example.viewmodel.HapticCue
 import com.example.viewmodel.HistoryViewModel
 import com.example.viewmodel.NetworkInfoViewModel
 import com.example.viewmodel.SettingsViewModel
+import com.example.viewmodel.SnackbarNotice
 import com.example.viewmodel.SpeedTestUiState
 import com.example.viewmodel.SpeedTestViewModel
 
@@ -98,6 +101,8 @@ fun SpeedTestApp(
     val testUiState by speedTestViewModel.uiState.collectAsStateWithLifecycle()
     val historyItems by historyViewModel.historyItems.collectAsStateWithLifecycle()
 
+    val snackbarHostState = remember { SnackbarHostState() }
+
     LaunchedEffect(speedTestViewModel, view) {
         speedTestViewModel.hapticEvents.collect { cue ->
             val feedbackConstant = when (cue) {
@@ -109,6 +114,22 @@ fun SpeedTestApp(
                 }
             }
             view.performHapticFeedback(feedbackConstant)
+        }
+    }
+
+    LaunchedEffect(speedTestViewModel, context, snackbarHostState) {
+        speedTestViewModel.snackbarNotices.collect { notice ->
+            val message = when (notice) {
+                is SnackbarNotice.SavedServerUnreachable -> context.getString(
+                    R.string.snackbar_saved_server_unreachable,
+                    notice.serverName,
+                )
+                is SnackbarNotice.ServerSwitchedToCloudflare -> context.getString(
+                    R.string.snackbar_server_fallback_cloudflare,
+                    notice.previousServerName,
+                )
+            }
+            snackbarHostState.showSnackbar(message = message)
         }
     }
 
@@ -176,6 +197,7 @@ fun SpeedTestApp(
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 contentWindowInsets = WindowInsets.safeDrawing,
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
             ) { innerPadding ->
                 Row(
                     modifier = Modifier
@@ -221,6 +243,7 @@ fun SpeedTestApp(
             Scaffold(
                 containerColor = MaterialTheme.colorScheme.background,
                 contentWindowInsets = WindowInsets.safeDrawing,
+                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
                 bottomBar = {
                     if (!isDetailScreen) {
                         NavigationBar(
@@ -295,6 +318,11 @@ private fun SpeedTestNavHost(
                 onWifiPermissionResult = speedTestViewModel::onWifiPermissionResult,
                 onPhonePermissionResult = speedTestViewModel::onPhonePermissionResult,
                 onRefreshConnectionInfo = speedTestViewModel::onRefreshConnectionInfo,
+                onOpenServerSelector = speedTestViewModel::onOpenServerSelector,
+                onRefreshServers = speedTestViewModel::onRefreshServers,
+                onSelectServer = speedTestViewModel::onSelectServer,
+                onAddCustomServer = speedTestViewModel::onAddCustomServer,
+                onDeleteCustomServer = speedTestViewModel::onDeleteCustomServer,
             )
         }
 
@@ -398,6 +426,7 @@ private fun SpeedTestNavHost(
                 onLiteModeChange = settingsViewModel::setLiteMode,
                 onHapticFeedbackChange = settingsViewModel::setHapticFeedback,
                 onMobileDataWarningChange = settingsViewModel::setMobileDataWarning,
+                onIncludeCommunityServersChange = settingsViewModel::setIncludeCommunityServers,
             )
         }
     }

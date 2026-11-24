@@ -1,23 +1,19 @@
 package com.example.data.constants
 
 /**
- * Centralized configuration for the speed test engine.
- * Swapping [SERVER_BASE_URL] redirects all latency, download, and upload endpoints.
+ * Centralized configuration for the speed test engine and server selection.
+ * Server endpoint URLs live strictly in [com.example.data.server.ServerProfile].
  */
 object SpeedTestConstants {
-    const val SERVER_BASE_URL = "https://speed.cloudflare.com"
+    // Public community server directory (fetched only on user action, cached 24 hours)
+    const val COMMUNITY_SERVERS_URL = "https://librespeed.org/backend-servers/servers.php"
+    const val COMMUNITY_CACHE_TTL_MS = 24L * 60L * 60L * 1_000L
 
-    private const val DOWNLOAD_ENDPOINT = "/__down"
-    private const val UPLOAD_ENDPOINT = "/__up"
-
-    fun downloadUrl(bytes: Long, cacheBuster: Long): String =
-        "$SERVER_BASE_URL$DOWNLOAD_ENDPOINT?bytes=$bytes&r=$cacheBuster"
-
-    fun pingUrl(cacheBuster: Long): String =
-        "$SERVER_BASE_URL$DOWNLOAD_ENDPOINT?bytes=0&r=$cacheBuster"
-
-    fun uploadUrl(cacheBuster: Long): String =
-        "$SERVER_BASE_URL$UPLOAD_ENDPOINT?r=$cacheBuster"
+    // Server health probing & automatic fallback
+    const val SERVER_HEALTH_CONCURRENCY = 8
+    const val SERVER_HEALTH_PROBES = 3
+    const val SERVER_HEALTH_TIMEOUT_MS = 2_000L
+    const val NO_DATA_FALLBACK_TIMEOUT_MS = 5_000L
 
     // Latency & loaded latency configuration
     const val PING_REQUEST_COUNT = 10

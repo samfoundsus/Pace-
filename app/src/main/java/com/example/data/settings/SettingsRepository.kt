@@ -31,6 +31,7 @@ data class UserSettings(
     val liteMode: Boolean = false,
     val hapticFeedback: Boolean = true,
     val mobileDataWarning: Boolean = true,
+    val includeCommunityServers: Boolean = true,
 )
 
 private val Context.settingsDataStore: DataStore<Preferences> by preferencesDataStore(
@@ -51,6 +52,7 @@ class SettingsRepository(context: Context) {
         val LITE_MODE = booleanPreferencesKey("lite_mode")
         val HAPTIC_FEEDBACK = booleanPreferencesKey("haptic_feedback")
         val MOBILE_DATA_WARNING = booleanPreferencesKey("mobile_data_warning")
+        val INCLUDE_COMMUNITY_SERVERS = booleanPreferencesKey("include_community_servers")
     }
 
     val settings: Flow<UserSettings> = dataStore.data
@@ -73,6 +75,7 @@ class SettingsRepository(context: Context) {
                 liteMode = prefs[Keys.LITE_MODE] ?: false,
                 hapticFeedback = prefs[Keys.HAPTIC_FEEDBACK] ?: true,
                 mobileDataWarning = prefs[Keys.MOBILE_DATA_WARNING] ?: true,
+                includeCommunityServers = prefs[Keys.INCLUDE_COMMUNITY_SERVERS] ?: true,
             )
         }
 
@@ -98,5 +101,9 @@ class SettingsRepository(context: Context) {
 
     suspend fun setMobileDataWarning(enabled: Boolean) {
         dataStore.edit { it[Keys.MOBILE_DATA_WARNING] = enabled }
+    }
+
+    suspend fun setIncludeCommunityServers(enabled: Boolean) {
+        dataStore.edit { it[Keys.INCLUDE_COMMUNITY_SERVERS] = enabled }
     }
 }

@@ -26,6 +26,8 @@ data class TestResultEntity(
     val cellularNetworkTag: String? = null,
     val deviceModel: String? = null,
     val wifiBand: String? = null,
+    val serverName: String? = null,
+    val serverLocation: String? = null,
 )
 
 fun TestResultEntity.toDomain(): TestResult {
@@ -54,6 +56,8 @@ fun TestResultEntity.toDomain(): TestResult {
         cellularNetworkTag = cellularNetworkTag,
         deviceModel = deviceModel,
         wifiBand = resolvedWifiBand,
+        serverName = serverName?.takeIf { it.isNotBlank() },
+        serverLocation = serverLocation?.takeIf { it.isNotBlank() },
     )
 }
 
@@ -72,4 +76,6 @@ fun TestResult.toEntity(): TestResultEntity = TestResultEntity(
     cellularNetworkTag = cellularNetworkTag,
     deviceModel = deviceModel,
     wifiBand = wifiBand,
+    serverName = serverName?.takeIf { it.isNotBlank() },
+    serverLocation = serverLocation?.takeIf { it.isNotBlank() },
 )

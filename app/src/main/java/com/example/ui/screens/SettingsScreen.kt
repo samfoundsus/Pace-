@@ -88,6 +88,7 @@ fun SettingsScreen(
     onLiteModeChange: (Boolean) -> Unit,
     onHapticFeedbackChange: (Boolean) -> Unit,
     onMobileDataWarningChange: (Boolean) -> Unit,
+    onIncludeCommunityServersChange: (Boolean) -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
@@ -214,7 +215,7 @@ fun SettingsScreen(
                         SettingsChoiceTile(
                             title = stringResource(R.string.settings_units_label),
                             summary = unitSummary,
-                            shape = groupTileShape(index = 0, count = 3),
+                            shape = groupTileShape(index = 0, count = 4),
                             onClick = { showUnitsDialog = true },
                             testTag = "settings_units_row",
                         )
@@ -224,7 +225,7 @@ fun SettingsScreen(
                             summary = stringResource(R.string.settings_lite_mode_subtitle),
                             checked = settings.liteMode,
                             enabled = true,
-                            shape = groupTileShape(index = 1, count = 3),
+                            shape = groupTileShape(index = 1, count = 4),
                             onCheckedChange = onLiteModeChange,
                             testTag = "switch_lite_mode",
                         )
@@ -234,9 +235,19 @@ fun SettingsScreen(
                             summary = stringResource(R.string.settings_haptics_subtitle),
                             checked = settings.hapticFeedback,
                             enabled = true,
-                            shape = groupTileShape(index = 2, count = 3),
+                            shape = groupTileShape(index = 2, count = 4),
                             onCheckedChange = onHapticFeedbackChange,
                             testTag = "switch_haptic_feedback",
+                        )
+
+                        SettingsSwitchTile(
+                            title = stringResource(R.string.settings_community_servers_title),
+                            summary = stringResource(R.string.settings_community_servers_subtitle),
+                            checked = settings.includeCommunityServers,
+                            enabled = true,
+                            shape = groupTileShape(index = 3, count = 4),
+                            onCheckedChange = onIncludeCommunityServersChange,
+                            testTag = "switch_include_community_servers",
                         )
                     }
                 }

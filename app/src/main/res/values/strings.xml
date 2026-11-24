@@ -248,13 +248,45 @@
     <string name="settings_lite_mode_subtitle">Run 5-second phases instead of 10 to save time and data</string>
     <string name="settings_haptics_title">Haptic feedback</string>
     <string name="settings_haptics_subtitle">Vibrate when a test starts and finishes</string>
+    <string name="settings_community_servers_title">Include community servers</string>
+    <string name="settings_community_servers_subtitle">Fetch public LibreSpeed servers when picking a server or running Auto</string>
     <string name="settings_data_section">Data</string>
     <string name="settings_mobile_warning_title">Mobile data warning</string>
     <string name="settings_mobile_warning_subtitle">Ask before running a test on cellular data</string>
     <string name="settings_privacy_section">Privacy</string>
     <string name="settings_privacy_title">On-device history &amp; external lookups</string>
-    <string name="settings_privacy_body">IP and ISP are looked up from an external service, and DNS benchmark tests contact third-party DNS servers. Nothing is uploaded or stored anywhere, and your test history stays on this device.</string>
+    <string name="settings_privacy_body">Servers you test against, including community ones, can see your IP address and the test traffic. A public server list is fetched from librespeed.org when you open the server selector or run Auto. IP and ISP are looked up from an external service, and DNS benchmark tests contact third-party DNS servers. Your test history stays on this device.</string>
     <string name="settings_footer_brand">Pace - Internet Speed Test</string>
+
+    <!-- Test server selection -->
+    <string name="action_save">Save</string>
+    <string name="server_row_label">Server</string>
+    <string name="server_auto_fastest">Auto (fastest)</string>
+    <string name="server_auto_value">Auto · %1$s</string>
+    <string name="server_auto_subtitle">Picks the lowest-ping healthy server</string>
+    <string name="server_resolving">Finding fastest server…</string>
+    <string name="server_sheet_title">Test server</string>
+    <string name="server_probing_status">Checking server ping…</string>
+    <string name="server_community_load_error">Couldn\'t load community servers. Cloudflare is still available.</string>
+    <string name="server_tag_community">Community</string>
+    <string name="server_tag_custom">Custom</string>
+    <string name="server_ping_ms">%1$s ms</string>
+    <string name="server_show_unavailable">Show unavailable</string>
+    <string name="server_show_unavailable_count">Show unavailable (%1$d)</string>
+    <string name="server_add_custom">Add your own server</string>
+    <string name="server_add_custom_hint">Enter an HTTPS LibreSpeed server URL. Pace pings it before saving.</string>
+    <string name="server_custom_base_url_label">Base URL (HTTPS)</string>
+    <string name="server_custom_name_label">Name (optional)</string>
+    <string name="server_custom_paths_heading">Optional paths</string>
+    <string name="server_custom_dl_path_label">Download path</string>
+    <string name="server_custom_ul_path_label">Upload path</string>
+    <string name="server_custom_ping_path_label">Ping path</string>
+    <string name="server_custom_getip_path_label">Get IP path</string>
+    <string name="server_custom_checking">Checking…</string>
+    <string name="server_custom_error_invalid_url">Enter a valid public HTTPS URL without credentials or local addresses.</string>
+    <string name="server_custom_error_unreachable">Server didn\'t answer the ping check. Check the URL and try again.</string>
+    <string name="snackbar_saved_server_unreachable">%1$s is unreachable. Using Cloudflare instead.</string>
+    <string name="snackbar_server_fallback_cloudflare">%1$s didn\'t respond. Switched to Cloudflare.</string>
 
     <!-- Mobile data warning dialog -->
     <string name="mobile_data_warning_title">Mobile data usage</string>
@@ -280,4 +312,7 @@
     <string name="cd_refresh_network_info">Refresh network information</string>
     <string name="cd_share_result">Share result card</string>
     <string name="cd_export_pdf">Export result as PDF</string>
+    <string name="cd_server_icon">Test server</string>
+    <string name="cd_selected_server">Selected server</string>
+    <string name="cd_delete_server">Delete custom server</string>
 </resources>

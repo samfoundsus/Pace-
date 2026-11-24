@@ -201,9 +201,45 @@ object ResultCardRenderer {
             textSize = 28f
             typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
         }
-        canvas.drawText("Pace · Internet Speed Test", margin, CARD_HEIGHT - 76f, footerPaint)
+        val footerLeft = "Pace · Internet Speed Test"
+        canvas.drawText(footerLeft, margin, CARD_HEIGHT - 76f, footerPaint)
+
+        val serverDisplay = formatServerDisplay(result)
+        if (serverDisplay != null) {
+            val serverPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
+                color = Color.parseColor("#9BA7C0")
+                textSize = 26f
+                typeface = Typeface.create(Typeface.SANS_SERIF, Typeface.NORMAL)
+            }
+            val leftWidth = footerPaint.measureText(footerLeft)
+            val maxServerWidth = (contentWidth - leftWidth - 36f).coerceAtLeast(180f)
+            val ellipsizedServer = ellipsizeText("Server: $serverDisplay", serverPaint, maxServerWidth)
+            val serverWidth = serverPaint.measureText(ellipsizedServer)
+            canvas.drawText(
+                ellipsizedServer,
+                CARD_WIDTH - margin - serverWidth,
+                CARD_HEIGHT - 76f,
+                serverPaint,
+            )
+        }
 
         return bitmap
+    }
+
+    private fun formatServerDisplay(result: TestResult): String? {
+        val name = result.serverName?.trim()?.takeIf { it.isNotEmpty() } ?: return null
+        val location = result.serverLocation?.trim()?.takeIf { it.isNotEmpty() }
+        return if (location != null) "$name · $location" else name
+    }
+
+    private fun ellipsizeText(text: String, paint: Paint, maxWidth: Float): String {
+        if (paint.measureText(text) <= maxWidth) return text
+        val ellipsis = "…"
+        var end = text.length
+        while (end > 1 && paint.measureText(text.substring(0, end) + ellipsis) > maxWidth) {
+            end--
+        }
+        return text.substring(0, end).trimEnd() + ellipsis
     }
 
     suspend fun saveCardToCacheUri(
