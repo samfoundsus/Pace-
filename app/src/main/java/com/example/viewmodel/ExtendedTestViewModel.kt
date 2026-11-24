@@ -21,6 +21,7 @@ import com.example.engine.download.DownloadEngine
 import com.example.engine.download.DownloadEvent
 import com.example.engine.latency.ServerHttpException
 import com.example.engine.speedtest.NetworkMonitor
+import com.example.engine.speedtest.OkHttpCleanup
 import com.example.engine.speedtest.ServerNoDataTimeoutException
 import com.example.engine.speedtest.SpeedTestClientFactory
 import com.example.engine.speedtest.WifiBand
@@ -231,7 +232,7 @@ class ExtendedTestViewModel(
         val jobToCancel = activeJob
         activeJob = null
         jobToCancel?.cancel()
-        throughputClient.dispatcher.cancelAll()
+        OkHttpCleanup.cancelClientAsync(throughputClient)
 
         // Preserve any partial curves and completed summaries collected so far.
         val keptDownload = _downloadSamples.value
@@ -567,8 +568,7 @@ class ExtendedTestViewModel(
         activeJob?.cancel()
         activeJob = null
         networkMonitor.stopObserving()
-        throughputClient.dispatcher.cancelAll()
-        throughputClient.connectionPool.evictAll()
+        OkHttpCleanup.closeClientAsync(throughputClient, evictPool = true)
         super.onCleared()
     }
 

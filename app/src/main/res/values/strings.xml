@@ -23,6 +23,7 @@
     <string name="action_dismiss">Dismiss</string>
     <string name="action_clear_all">Clear all</string>
     <string name="action_delete">Delete</string>
+    <string name="action_copy">Copy</string>
     <string name="action_back">Back</string>
     <string name="action_refresh">Refresh</string>
     <string name="action_open_settings">Open settings</string>
@@ -255,7 +256,14 @@
     <string name="settings_mobile_warning_subtitle">Ask before running a test on cellular data</string>
     <string name="settings_privacy_section">Privacy</string>
     <string name="settings_privacy_title">On-device history &amp; external lookups</string>
-    <string name="settings_privacy_body">Servers you test against, including community ones, can see your IP address and the test traffic. A public server list is fetched from librespeed.org when you open the server selector or run Auto. IP and ISP are looked up from an external service, and DNS benchmark tests contact third-party DNS servers. Your test history stays on this device.</string>
+    <string name="settings_privacy_body">Servers you test against, including community ones, can see your IP address and the test traffic. A public server list is fetched from librespeed.org when you open the server selector or run Auto. IP and ISP are looked up from an external service, and DNS benchmark tests contact third-party DNS servers. Your test history stays on this device. Crash reports stay on this device and are only shared if you copy them.</string>
+    <string name="settings_diagnostics_section">Diagnostics</string>
+    <string name="settings_last_crash_report_title">Last crash report</string>
+    <string name="settings_last_crash_report_summary">Saved locally on this device</string>
+    <string name="crash_report_title">Last crash report</string>
+    <string name="crash_report_privacy_note">Crash reports stay on this device and are only shared if you copy them.</string>
+    <string name="crash_report_copied">Crash report copied</string>
+    <string name="crash_report_empty">No crash report saved on this device.</string>
     <string name="settings_footer_brand">Pace - Internet Speed Test</string>
 
     <!-- Test server selection -->

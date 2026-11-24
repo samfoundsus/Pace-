@@ -4,6 +4,7 @@ import com.example.data.constants.SpeedTestConstants
 import com.example.data.server.CloudflareColoMapper
 import com.example.data.server.ServerKind
 import com.example.data.server.ServerProfile
+import com.example.engine.speedtest.OkHttpCleanup
 import com.example.engine.speedtest.SpeedMath
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
@@ -171,7 +172,7 @@ class ServerHealthChecker(
     }
 
     fun cancelAll() {
-        probeClient.dispatcher.cancelAll()
+        OkHttpCleanup.cancelClientAsync(probeClient)
     }
 
     companion object {

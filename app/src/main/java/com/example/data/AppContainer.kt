@@ -1,6 +1,7 @@
 package com.example.data
 
 import android.content.Context
+import com.example.data.diagnostics.CrashReportStore
 import com.example.data.local.HistoryRepository
 import com.example.data.local.SpeedTestDatabase
 import com.example.data.server.ServerRepository
@@ -26,6 +27,10 @@ class AppContainer private constructor(context: Context) {
 
     val serverRepository: ServerRepository by lazy {
         ServerRepository(appContext)
+    }
+
+    val crashReportStore: CrashReportStore by lazy {
+        CrashReportStore(appContext)
     }
 
     companion object {

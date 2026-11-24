@@ -1,19 +1,36 @@
 package com.example.ui.screens
 
+import android.content.Context
 import android.os.Build
+import android.provider.Settings
 import android.view.HapticFeedbackConstants
 import androidx.annotation.StringRes
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.WindowInsetsSides
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.rounded.Settings
 import androidx.compose.material3.Icon
@@ -27,16 +44,27 @@ import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavGraph.Companion.findStartDestination
@@ -71,8 +99,19 @@ object SpeedTestRoutes {
     const val DNS_BENCHMARK = "tools/dns_benchmark"
     const val EXTENDED_TEST = "tools/extended_test"
     const val SETTINGS = "settings"
+    const val CRASH_REPORT = "settings/crash_report"
 
     fun historyDetail(resultId: Long): String = "history_detail/$resultId"
+
+    fun isSubScreen(route: String?): Boolean = when (route) {
+        HISTORY_DETAIL,
+        NETWORK_INFO,
+        DNS_BENCHMARK,
+        EXTENDED_TEST,
+        CRASH_REPORT,
+        -> true
+        else -> false
+    }
 }
 
 private data class SpeedTestDestination(
@@ -82,6 +121,39 @@ private data class SpeedTestDestination(
     val testTag: String,
 )
 
+private fun readAnimatorDurationScale(context: Context): Float {
+    return runCatching {
+        Settings.Global.getFloat(
+            context.contentResolver,
+            Settings.Global.ANIMATOR_DURATION_SCALE,
+            1f,
+        )
+    }.getOrDefault(1f)
+}
+
+@Composable
+private fun rememberAnimationsEnabled(): Boolean {
+    val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var animatorScale by remember(context) {
+        mutableFloatStateOf(readAnimatorDurationScale(context))
+    }
+
+    DisposableEffect(lifecycleOwner, context) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                animatorScale = readAnimatorDurationScale(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    return animatorScale > 0f
+}
+
 @Composable
 fun SpeedTestApp(
     userSettings: UserSettings,
@@ -90,6 +162,8 @@ fun SpeedTestApp(
 ) {
     val context = LocalContext.current
     val view = LocalView.current
+    val density = LocalDensity.current
+    val animationsEnabled = rememberAnimationsEnabled()
 
     val speedTestViewModel: SpeedTestViewModel = viewModel(
         factory = SpeedTestViewModel.factory(context),
@@ -100,6 +174,7 @@ fun SpeedTestApp(
 
     val testUiState by speedTestViewModel.uiState.collectAsStateWithLifecycle()
     val historyItems by historyViewModel.historyItems.collectAsStateWithLifecycle()
+    val hasCrashReport by settingsViewModel.hasCrashReport.collectAsStateWithLifecycle()
 
     val snackbarHostState = remember { SnackbarHostState() }
 
@@ -136,16 +211,14 @@ fun SpeedTestApp(
     val navController = rememberNavController()
     val backStackEntry by navController.currentBackStackEntryAsState()
     val currentRoute = backStackEntry?.destination?.route ?: SpeedTestRoutes.TEST
-    val isDetailScreen = currentRoute == SpeedTestRoutes.HISTORY_DETAIL ||
-        currentRoute == SpeedTestRoutes.NETWORK_INFO ||
-        currentRoute == SpeedTestRoutes.DNS_BENCHMARK ||
-        currentRoute == SpeedTestRoutes.EXTENDED_TEST
+    val isDetailScreen = SpeedTestRoutes.isSubScreen(currentRoute)
     val selectedTopRoute = when (currentRoute) {
         SpeedTestRoutes.HISTORY_DETAIL -> SpeedTestRoutes.HISTORY
         SpeedTestRoutes.NETWORK_INFO,
         SpeedTestRoutes.DNS_BENCHMARK,
         SpeedTestRoutes.EXTENDED_TEST,
         -> SpeedTestRoutes.TOOLS
+        SpeedTestRoutes.CRASH_REPORT -> SpeedTestRoutes.SETTINGS
         else -> currentRoute
     }
 
@@ -234,40 +307,36 @@ fun SpeedTestApp(
                         settingsViewModel = settingsViewModel,
                         testUiState = testUiState,
                         historyItems = historyItems,
+                        hasCrashReport = hasCrashReport,
                         userSettings = userSettings,
+                        animationsEnabled = animationsEnabled,
+                        topLevelBottomPadding = 0.dp,
+                        applyNavBarInsetsToSubScreens = false,
                         modifier = Modifier.weight(1f),
                     )
                 }
             }
         } else {
-            Scaffold(
-                containerColor = MaterialTheme.colorScheme.background,
-                contentWindowInsets = WindowInsets.safeDrawing,
-                snackbarHost = { SnackbarHost(hostState = snackbarHostState) },
-                bottomBar = {
-                    if (!isDetailScreen) {
-                        NavigationBar(
-                            containerColor = MaterialTheme.colorScheme.surfaceContainer,
-                        ) {
-                            destinations.forEach { destination ->
-                                val label = stringResource(destination.labelRes)
-                                NavigationBarItem(
-                                    selected = selectedTopRoute == destination.route,
-                                    onClick = { navigateToTab(destination.route) },
-                                    icon = {
-                                        Icon(
-                                            imageVector = destination.icon,
-                                            contentDescription = label,
-                                        )
-                                    },
-                                    label = { Text(text = label) },
-                                    modifier = Modifier.testTag(destination.testTag),
-                                )
-                            }
-                        }
-                    }
-                },
-            ) { innerPadding ->
+            var measuredBottomBarHeightPx by remember { mutableIntStateOf(0) }
+            val navBarInsetBottom = with(density) {
+                WindowInsets.navigationBars.getBottom(density).toDp()
+            }
+            val bottomBarClearance = if (measuredBottomBarHeightPx > 0) {
+                with(density) { measuredBottomBarHeightPx.toDp() }
+            } else {
+                80.dp + navBarInsetBottom
+            }
+
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(MaterialTheme.colorScheme.background)
+                    .windowInsetsPadding(
+                        WindowInsets.safeDrawing.only(
+                            WindowInsetsSides.Top + WindowInsetsSides.Horizontal,
+                        ),
+                    ),
+            ) {
                 SpeedTestNavHost(
                     navController = navController,
                     speedTestViewModel = speedTestViewModel,
@@ -275,11 +344,82 @@ fun SpeedTestApp(
                     settingsViewModel = settingsViewModel,
                     testUiState = testUiState,
                     historyItems = historyItems,
+                    hasCrashReport = hasCrashReport,
                     userSettings = userSettings,
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(innerPadding),
+                    animationsEnabled = animationsEnabled,
+                    topLevelBottomPadding = bottomBarClearance,
+                    applyNavBarInsetsToSubScreens = true,
+                    modifier = Modifier.fillMaxSize(),
                 )
+
+                SnackbarHost(
+                    hostState = snackbarHostState,
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(
+                            bottom = if (!isDetailScreen) bottomBarClearance else navBarInsetBottom,
+                        ),
+                )
+
+                AnimatedVisibility(
+                    visible = !isDetailScreen,
+                    enter = if (animationsEnabled) {
+                        fadeIn(
+                            animationSpec = tween(
+                                durationMillis = 210,
+                                easing = FastOutSlowInEasing,
+                            ),
+                        ) + slideInVertically(
+                            animationSpec = tween(
+                                durationMillis = 220,
+                                easing = FastOutSlowInEasing,
+                            ),
+                        ) { fullHeight -> fullHeight / 2 }
+                    } else {
+                        EnterTransition.None
+                    },
+                    exit = if (animationsEnabled) {
+                        fadeOut(
+                            animationSpec = tween(
+                                durationMillis = 140,
+                                easing = FastOutSlowInEasing,
+                            ),
+                        ) + slideOutVertically(
+                            animationSpec = tween(
+                                durationMillis = 160,
+                                easing = FastOutSlowInEasing,
+                            ),
+                        ) { fullHeight -> fullHeight / 2 }
+                    } else {
+                        ExitTransition.None
+                    },
+                    modifier = Modifier.align(Alignment.BottomCenter),
+                ) {
+                    NavigationBar(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        modifier = Modifier.onSizeChanged { size ->
+                            if (size.height > 0) {
+                                measuredBottomBarHeightPx = size.height
+                            }
+                        },
+                    ) {
+                        destinations.forEach { destination ->
+                            val label = stringResource(destination.labelRes)
+                            NavigationBarItem(
+                                selected = selectedTopRoute == destination.route,
+                                onClick = { navigateToTab(destination.route) },
+                                icon = {
+                                    Icon(
+                                        imageVector = destination.icon,
+                                        contentDescription = label,
+                                    )
+                                },
+                                label = { Text(text = label) },
+                                modifier = Modifier.testTag(destination.testTag),
+                            )
+                        }
+                    }
+                }
             }
         }
     }
@@ -293,16 +433,164 @@ private fun SpeedTestNavHost(
     settingsViewModel: SettingsViewModel,
     testUiState: SpeedTestUiState,
     historyItems: List<TestResult>,
+    hasCrashReport: Boolean,
     userSettings: UserSettings,
+    animationsEnabled: Boolean,
+    topLevelBottomPadding: Dp,
+    applyNavBarInsetsToSubScreens: Boolean,
     modifier: Modifier = Modifier,
 ) {
+    val density = LocalDensity.current
+    val sharedAxisSlidePx = remember(density) {
+        with(density) { 30.dp.roundToPx() }
+    }
+
+    val popBackSafely: () -> Unit = {
+        if (navController.previousBackStackEntry != null) {
+            navController.popBackStack()
+        }
+    }
+
+    val topLevelModifier = if (topLevelBottomPadding > 0.dp) {
+        Modifier
+            .fillMaxSize()
+            .padding(bottom = topLevelBottomPadding)
+    } else {
+        Modifier.fillMaxSize()
+    }
+
+    val subScreenModifier = if (applyNavBarInsetsToSubScreens) {
+        Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.navigationBars)
+    } else {
+        Modifier.fillMaxSize()
+    }
+
     NavHost(
         navController = navController,
         startDestination = SpeedTestRoutes.TEST,
-        enterTransition = { fadeIn(animationSpec = tween(durationMillis = 180)) },
-        exitTransition = { fadeOut(animationSpec = tween(durationMillis = 140)) },
-        popEnterTransition = { fadeIn(animationSpec = tween(durationMillis = 180)) },
-        popExitTransition = { fadeOut(animationSpec = tween(durationMillis = 140)) },
+        sizeTransform = null,
+        enterTransition = {
+            if (!animationsEnabled) {
+                EnterTransition.None
+            } else if (SpeedTestRoutes.isSubScreen(targetState.destination.route)) {
+                // Material shared axis X (forward enter): +30dp slide + fade in
+                slideInHorizontally(
+                    animationSpec = tween(
+                        durationMillis = 260,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { sharedAxisSlidePx } + fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 210,
+                        delayMillis = 50,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            } else {
+                // Material fade through (bottom tabs): 90ms out, then 210ms fade in + scale 0.92 -> 1
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 210,
+                        delayMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) + scaleIn(
+                    initialScale = 0.92f,
+                    animationSpec = tween(
+                        durationMillis = 210,
+                        delayMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+        },
+        exitTransition = {
+            if (!animationsEnabled) {
+                ExitTransition.None
+            } else if (SpeedTestRoutes.isSubScreen(targetState.destination.route)) {
+                // Material shared axis X (forward exit of parent screen): -30dp slide + fade out
+                slideOutHorizontally(
+                    animationSpec = tween(
+                        durationMillis = 200,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { -sharedAxisSlidePx } + fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            } else {
+                // Material fade through (bottom tabs): 90ms fade out
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+        },
+        popEnterTransition = {
+            if (!animationsEnabled) {
+                EnterTransition.None
+            } else if (SpeedTestRoutes.isSubScreen(initialState.destination.route)) {
+                // Material shared axis X (reverse back enter of parent screen): -30dp -> 0 + fade in
+                slideInHorizontally(
+                    animationSpec = tween(
+                        durationMillis = 240,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { -sharedAxisSlidePx } + fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 180,
+                        delayMillis = 40,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            } else {
+                fadeIn(
+                    animationSpec = tween(
+                        durationMillis = 210,
+                        delayMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) + scaleIn(
+                    initialScale = 0.92f,
+                    animationSpec = tween(
+                        durationMillis = 210,
+                        delayMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+        },
+        popExitTransition = {
+            if (!animationsEnabled) {
+                ExitTransition.None
+            } else if (SpeedTestRoutes.isSubScreen(initialState.destination.route)) {
+                // Material shared axis X (reverse back exit of sub-screen): 0 -> +30dp + fade out
+                slideOutHorizontally(
+                    animationSpec = tween(
+                        durationMillis = 220,
+                        easing = FastOutSlowInEasing,
+                    ),
+                ) { sharedAxisSlidePx } + fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 120,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            } else {
+                fadeOut(
+                    animationSpec = tween(
+                        durationMillis = 90,
+                        easing = FastOutSlowInEasing,
+                    ),
+                )
+            }
+        },
         modifier = modifier,
     ) {
         composable(SpeedTestRoutes.TEST) {
@@ -323,6 +611,7 @@ private fun SpeedTestNavHost(
                 onSelectServer = speedTestViewModel::onSelectServer,
                 onAddCustomServer = speedTestViewModel::onAddCustomServer,
                 onDeleteCustomServer = speedTestViewModel::onDeleteCustomServer,
+                modifier = topLevelModifier,
             )
         }
 
@@ -335,6 +624,7 @@ private fun SpeedTestNavHost(
                 },
                 onDeleteResult = historyViewModel::deleteResult,
                 onClearAll = historyViewModel::clearAllHistory,
+                modifier = topLevelModifier,
             )
         }
 
@@ -352,8 +642,9 @@ private fun SpeedTestNavHost(
             HistoryDetailScreen(
                 result = result,
                 speedUnit = userSettings.speedUnit,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = popBackSafely,
                 onDelete = historyViewModel::deleteResult,
+                modifier = subScreenModifier,
             )
         }
 
@@ -362,6 +653,7 @@ private fun SpeedTestNavHost(
                 onOpenNetworkInfo = { navController.navigate(SpeedTestRoutes.NETWORK_INFO) },
                 onOpenDnsBenchmark = { navController.navigate(SpeedTestRoutes.DNS_BENCHMARK) },
                 onOpenExtendedTest = { navController.navigate(SpeedTestRoutes.EXTENDED_TEST) },
+                modifier = topLevelModifier,
             )
         }
 
@@ -373,11 +665,12 @@ private fun SpeedTestNavHost(
             val uiState by networkInfoViewModel.uiState.collectAsStateWithLifecycle()
             NetworkInfoScreen(
                 uiState = uiState,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = popBackSafely,
                 onRefresh = networkInfoViewModel::onRefreshAll,
                 onResumeRefresh = networkInfoViewModel::onResumeRefresh,
                 onWifiPermissionResult = networkInfoViewModel::onWifiPermissionResult,
                 onPhonePermissionResult = networkInfoViewModel::onPhonePermissionResult,
+                modifier = subScreenModifier,
             )
         }
 
@@ -388,9 +681,10 @@ private fun SpeedTestNavHost(
             val uiState by dnsBenchmarkViewModel.uiState.collectAsStateWithLifecycle()
             DnsBenchmarkScreen(
                 uiState = uiState,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = popBackSafely,
                 onRunClick = dnsBenchmarkViewModel::onRunClicked,
                 onCancelClick = dnsBenchmarkViewModel::onCancelClicked,
+                modifier = subScreenModifier,
             )
         }
 
@@ -407,13 +701,14 @@ private fun SpeedTestNavHost(
                 downloadSamples = downloadSamples,
                 uploadSamples = uploadSamples,
                 speedUnit = userSettings.speedUnit,
-                onNavigateBack = { navController.popBackStack() },
+                onNavigateBack = popBackSafely,
                 onSelectDuration = extendedTestViewModel::onSelectDuration,
                 onStartClick = extendedTestViewModel::onStartClicked,
                 onCancelClick = extendedTestViewModel::onCancelClicked,
                 onConfirmMobileData = extendedTestViewModel::onConfirmMobileDataWarning,
                 onDismissMobileData = extendedTestViewModel::onDismissMobileDataWarning,
                 onDismissError = extendedTestViewModel::onDismissError,
+                modifier = subScreenModifier,
             )
         }
 
@@ -427,6 +722,23 @@ private fun SpeedTestNavHost(
                 onHapticFeedbackChange = settingsViewModel::setHapticFeedback,
                 onMobileDataWarningChange = settingsViewModel::setMobileDataWarning,
                 onIncludeCommunityServersChange = settingsViewModel::setIncludeCommunityServers,
+                hasCrashReport = hasCrashReport,
+                onOpenCrashReport = { navController.navigate(SpeedTestRoutes.CRASH_REPORT) },
+                onRefreshCrashReport = settingsViewModel::refreshCrashReportState,
+                modifier = topLevelModifier,
+            )
+        }
+
+        composable(SpeedTestRoutes.CRASH_REPORT) {
+            val reportText = remember { settingsViewModel.readLastCrashReport() }
+            CrashReportScreen(
+                reportText = reportText,
+                onNavigateBack = popBackSafely,
+                onDeleteReport = {
+                    settingsViewModel.deleteLastCrashReport()
+                    popBackSafely()
+                },
+                modifier = subScreenModifier,
             )
         }
     }

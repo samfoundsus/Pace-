@@ -1,14 +1,17 @@
 package com.example.engine.tools
 
 import com.example.data.constants.ToolsConstants
+import com.example.engine.speedtest.OkHttpCleanup
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.async
 import kotlinx.coroutines.coroutineScope
 import kotlinx.coroutines.currentCoroutineContext
+import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.withContext
 import okhttp3.CacheControl
+import okhttp3.Call
 import okhttp3.Dns
 import okhttp3.OkHttpClient
 import okhttp3.Request
@@ -18,7 +21,9 @@ import java.net.Inet4Address
 import java.net.Inet6Address
 import java.net.InetAddress
 import java.net.UnknownHostException
+import java.util.concurrent.CopyOnWriteArraySet
 import java.util.concurrent.TimeUnit
+import java.util.concurrent.atomic.AtomicBoolean
 
 data class IpWhoIsResult(
     val publicIp: String?,
@@ -34,11 +39,16 @@ data class InternetInfoResult(
 
 /**
  * Looks up public IP, ISP name, and IPv4/IPv6 reachability with strict 4-second timeouts.
- * All external calls run on Dispatchers.IO and fail gracefully without throwing to the UI.
+ * All external calls run on Dispatchers.IO, cancel cleanly off the main thread when the caller
+ * leaves, propagate CancellationException without swallowing it as a UI error, and always close
+ * their HTTP responses.
  */
 class InternetInfoClient(
     private val baseClient: OkHttpClient = createDefaultClient(),
 ) {
+    private val closed = AtomicBoolean(false)
+    private val activeCalls = CopyOnWriteArraySet<Call>()
+
     private val noCache = CacheControl.Builder()
         .noCache()
         .noStore()
@@ -57,6 +67,9 @@ class InternetInfoClient(
     }
 
     suspend fun fetchInternetInfo(): InternetInfoResult = withContext(Dispatchers.IO) {
+        if (closed.get()) {
+            throw CancellationException("InternetInfoClient is closed")
+        }
         coroutineScope {
             val ipWhoIsDeferred = async { fetchIpAndIsp() }
             val ipv4Deferred = async { checkIpv4Support() }
@@ -65,6 +78,11 @@ class InternetInfoClient(
             val ipWhoIs = ipWhoIsDeferred.await()
             val ipv4Ok = ipv4Deferred.await()
             val ipv6Ok = ipv6Deferred.await()
+
+            ensureActive()
+            if (closed.get()) {
+                throw CancellationException("InternetInfoClient was closed during lookup")
+            }
 
             InternetInfoResult(
                 publicIp = ipWhoIs.publicIp,
@@ -94,39 +112,78 @@ class InternetInfoClient(
     }
 
     private suspend fun executeGet(client: OkHttpClient, url: String): String? {
+        currentCoroutineContext().ensureActive()
+        if (closed.get()) {
+            throw CancellationException("InternetInfoClient is closed")
+        }
+
         val request = Request.Builder()
             .url(url)
             .cacheControl(noCache)
             .header("Accept", "application/json, text/plain")
+            .header("Connection", "close")
             .get()
             .build()
 
         val call = client.newCall(request)
+        activeCalls.add(call)
+        if (closed.get()) {
+            activeCalls.remove(call)
+            OkHttpCleanup.cancelCallAsync(call)
+            throw CancellationException("InternetInfoClient is closed")
+        }
+
+        // Cancel off the calling thread so cancelling from Main (e.g. ViewModel.onCleared)
+        // never triggers SSLSocket.close() on the main thread.
         val cancelHandle = currentCoroutineContext()[Job]?.invokeOnCompletion { cause ->
             if (cause != null) {
-                call.cancel()
+                OkHttpCleanup.cancelCallAsync(call)
             }
         }
 
         return try {
             call.execute().use { response ->
+                if (call.isCanceled() || closed.get()) {
+                    throw CancellationException("Internet lookup call cancelled")
+                }
+                currentCoroutineContext().ensureActive()
                 if (!response.isSuccessful) return null
                 response.body?.string()?.trim()?.takeIf { it.isNotBlank() }
             }
         } catch (ce: CancellationException) {
             throw ce
         } catch (_: IOException) {
+            if (call.isCanceled() || closed.get()) {
+                throw CancellationException("Internet lookup call cancelled")
+            }
+            currentCoroutineContext().ensureActive()
             null
         } catch (_: Exception) {
+            if (call.isCanceled() || closed.get()) {
+                throw CancellationException("Internet lookup call cancelled")
+            }
+            currentCoroutineContext().ensureActive()
             null
         } finally {
             cancelHandle?.dispose()
+            activeCalls.remove(call)
         }
     }
 
+    /**
+     * Cancels pending lookups and evicts pooled sockets strictly on a background thread.
+     * Safe to invoke multiple times and safe to call from the Android main thread.
+     */
     fun close() {
-        baseClient.dispatcher.cancelAll()
-        baseClient.connectionPool.evictAll()
+        val snapshotCalls = activeCalls.toList()
+        activeCalls.clear()
+        val firstClose = closed.compareAndSet(false, true)
+        snapshotCalls.forEach { call ->
+            OkHttpCleanup.cancelCallAsync(call)
+        }
+        if (firstClose) {
+            OkHttpCleanup.closeClientAsync(baseClient, evictPool = true)
+        }
     }
 
     private class FilteredDns(private val preferIpv6: Boolean) : Dns {

@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.example.data.AppContainer
+import com.example.data.diagnostics.CrashReportStore
 import com.example.data.server.ServerRepository
 import com.example.data.settings.SettingsRepository
 import com.example.data.settings.SpeedUnit
@@ -16,11 +17,12 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 
 /**
- * ViewModel for user preferences backed by DataStore Preferences.
+ * ViewModel for user preferences backed by DataStore Preferences and local crash report diagnostics.
  */
 class SettingsViewModel(
     private val settingsRepository: SettingsRepository,
     private val serverRepository: ServerRepository,
+    private val crashReportStore: CrashReportStore,
 ) : ViewModel() {
 
     val settings: StateFlow<UserSettings> = settingsRepository.settings
@@ -29,6 +31,18 @@ class SettingsViewModel(
             started = SharingStarted.WhileSubscribed(5_000L),
             initialValue = UserSettings(),
         )
+
+    val hasCrashReport: StateFlow<Boolean> = crashReportStore.hasCrashReport
+
+    fun refreshCrashReportState() {
+        crashReportStore.refresh()
+    }
+
+    fun readLastCrashReport(): String? = crashReportStore.readReport()
+
+    fun deleteLastCrashReport() {
+        crashReportStore.deleteReport()
+    }
 
     fun setThemeMode(mode: ThemeMode) {
         viewModelScope.launch {
@@ -81,6 +95,7 @@ class SettingsViewModel(
                 return SettingsViewModel(
                     settingsRepository = container.settingsRepository,
                     serverRepository = container.serverRepository,
+                    crashReportStore = container.crashReportStore,
                 ) as T
             }
         }

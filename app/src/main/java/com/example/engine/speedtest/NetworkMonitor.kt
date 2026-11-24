@@ -64,6 +64,9 @@ data class NetworkSnapshot(
  *   TelephonyDisplayInfo via TelephonyCallback.DisplayInfoListener.
  * - Android 11 (API 30): reads TelephonyDisplayInfo via PhoneStateListener.
  * - Android 10 and below (API <= 29): reads mobile generation without requiring READ_PHONE_STATE.
+ *
+ * All listener registrations and unregistrations are synchronized, idempotent, never register
+ * the same callback instance twice, and guard against IllegalArgumentException and SecurityException.
  */
 class NetworkMonitor(context: Context) {
 
@@ -78,8 +81,12 @@ class NetworkMonitor(context: Context) {
         appContext.getSystemService(Context.LOCATION_SERVICE) as? LocationManager
     private val mainHandler = Handler(Looper.getMainLooper())
 
+    private val callbackLock = Any()
+
     @Volatile
-    private var isRegistered = false
+    private var isObserving = false
+
+    private var registeredNetworkCallback: ConnectivityManager.NetworkCallback? = null
 
     @Volatile
     private var latestTransportWifiInfo: WifiInfo? = null
@@ -90,31 +97,25 @@ class NetworkMonitor(context: Context) {
     @Volatile
     private var latestDisplayNetworkType: Int = TelephonyManager.NETWORK_TYPE_UNKNOWN
 
-    @Volatile
     private var registeredTelephonySubId: Int = Int.MIN_VALUE
-
-    @Volatile
     private var registeredTelephonyManager: TelephonyManager? = null
-
-    @Volatile
     private var registeredTelephonyCallback: Any? = null
 
     @Suppress("DEPRECATION")
-    @Volatile
     private var registeredPhoneStateListener: PhoneStateListener? = null
 
     private val _networkState = MutableStateFlow(readCurrentSnapshot())
     val networkState: StateFlow<NetworkSnapshot> = _networkState.asStateFlow()
 
-    private var networkCallback: ConnectivityManager.NetworkCallback = createNetworkCallback()
-
     private fun createNetworkCallback(): ConnectivityManager.NetworkCallback {
         val baseCallback = object : ConnectivityManager.NetworkCallback() {
             override fun onAvailable(network: Network) {
+                if (!isObserving) return
                 refreshSnapshot()
             }
 
             override fun onCapabilitiesChanged(network: Network, networkCapabilities: NetworkCapabilities) {
+                if (!isObserving) return
                 val active = runCatching { connectivityManager?.activeNetwork }.getOrNull()
                 if (active == null || active == network) {
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
@@ -124,27 +125,33 @@ class NetworkMonitor(context: Context) {
                         }
                     }
                     ensureTelephonyDisplayListener()
-                    _networkState.value = buildSnapshot(network, networkCapabilities)
+                    if (isObserving) {
+                        _networkState.value = buildSnapshot(network, networkCapabilities)
+                    }
                 } else {
                     refreshSnapshot()
                 }
             }
 
             override fun onLost(network: Network) {
+                if (!isObserving) return
                 val currentHandle = _networkState.value.networkHandle
                 val active = runCatching { connectivityManager?.activeNetwork }.getOrNull()
                 if (active == null || active == network || currentHandle == network.networkHandle) {
                     latestTransportWifiInfo = null
                     val updated = readCurrentSnapshot()
-                    _networkState.value = if (updated.networkHandle == network.networkHandle) {
-                        offlineSnapshot()
-                    } else {
-                        updated
+                    if (isObserving) {
+                        _networkState.value = if (updated.networkHandle == network.networkHandle) {
+                            offlineSnapshot()
+                        } else {
+                            updated
+                        }
                     }
                 }
             }
 
             override fun onUnavailable() {
+                if (!isObserving) return
                 latestTransportWifiInfo = null
                 _networkState.value = offlineSnapshot()
             }
@@ -165,26 +172,58 @@ class NetworkMonitor(context: Context) {
     }
 
     fun startObserving() {
-        if (isRegistered) return
         val cm = connectivityManager ?: return
-        isRegistered = true
-        ensureTelephonyDisplayListener()
-        refreshSnapshot()
-        runCatching {
-            cm.registerDefaultNetworkCallback(networkCallback)
-        }.onFailure {
-            isRegistered = false
+        synchronized(callbackLock) {
+            if (isObserving) return
+            val callback = createNetworkCallback()
+            val registeredOk = try {
+                cm.registerDefaultNetworkCallback(callback)
+                true
+            } catch (_: IllegalArgumentException) {
+                false
+            } catch (_: SecurityException) {
+                false
+            } catch (_: RuntimeException) {
+                false
+            }
+            if (!registeredOk) {
+                registeredNetworkCallback = null
+                isObserving = false
+                return
+            }
+            registeredNetworkCallback = callback
+            isObserving = true
+            ensureTelephonyDisplayListenerLocked()
         }
+        refreshSnapshot()
     }
 
     fun stopObserving() {
-        if (!isRegistered) return
-        runCatching {
-            connectivityManager?.unregisterNetworkCallback(networkCallback)
+        val callbackToUnregister: ConnectivityManager.NetworkCallback?
+        synchronized(callbackLock) {
+            if (!isObserving && registeredNetworkCallback == null &&
+                registeredTelephonyCallback == null && registeredPhoneStateListener == null
+            ) {
+                return
+            }
+            isObserving = false
+            callbackToUnregister = registeredNetworkCallback
+            registeredNetworkCallback = null
+            unregisterTelephonyDisplayListenerLocked()
+            latestTransportWifiInfo = null
         }
-        unregisterTelephonyDisplayListener()
-        isRegistered = false
-        latestTransportWifiInfo = null
+
+        if (callbackToUnregister != null) {
+            try {
+                connectivityManager?.unregisterNetworkCallback(callbackToUnregister)
+            } catch (_: IllegalArgumentException) {
+                // Already unregistered by the platform.
+            } catch (_: SecurityException) {
+                // Permission or process state prevented unregistering.
+            } catch (_: RuntimeException) {
+                // Ignore platform callback teardown failures.
+            }
+        }
     }
 
     /**
@@ -195,17 +234,47 @@ class NetworkMonitor(context: Context) {
      */
     fun refreshSnapshot(reregisterCallback: Boolean = false): NetworkSnapshot {
         val cm = connectivityManager
-        if (reregisterCallback && isRegistered && cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            runCatching {
-                cm.unregisterNetworkCallback(networkCallback)
+        if (reregisterCallback && cm != null && Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            var oldCallback: ConnectivityManager.NetworkCallback? = null
+            var shouldReregister = false
+            synchronized(callbackLock) {
+                if (isObserving) {
+                    oldCallback = registeredNetworkCallback
+                    registeredNetworkCallback = null
+                    latestTransportWifiInfo = null
+                    shouldReregister = true
+                }
             }
-            latestTransportWifiInfo = null
-            networkCallback = createNetworkCallback()
-            runCatching {
-                cm.registerDefaultNetworkCallback(networkCallback)
+            if (oldCallback != null) {
+                try {
+                    cm.unregisterNetworkCallback(oldCallback)
+                } catch (_: IllegalArgumentException) {
+                } catch (_: SecurityException) {
+                } catch (_: RuntimeException) {
+                }
+            }
+            if (shouldReregister) {
+                synchronized(callbackLock) {
+                    if (isObserving && registeredNetworkCallback == null) {
+                        val freshCallback = createNetworkCallback()
+                        val registeredOk = try {
+                            cm.registerDefaultNetworkCallback(freshCallback)
+                            true
+                        } catch (_: IllegalArgumentException) {
+                            false
+                        } catch (_: SecurityException) {
+                            false
+                        } catch (_: RuntimeException) {
+                            false
+                        }
+                        if (registeredOk) {
+                            registeredNetworkCallback = freshCallback
+                        }
+                    }
+                }
             }
         }
-        if (isRegistered) {
+        if (isObserving) {
             ensureTelephonyDisplayListener()
         }
         val snapshot = readCurrentSnapshot()
@@ -418,7 +487,9 @@ class NetworkMonitor(context: Context) {
 
             if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R) {
                 if (!hasPhonePerm) return null
-                ensureTelephonyDisplayListener()
+                if (isObserving) {
+                    ensureTelephonyDisplayListener()
+                }
                 val rawNetworkType = runCatching { tm.dataNetworkType }
                     .getOrNull()
                     ?.takeIf { it != TelephonyManager.NETWORK_TYPE_UNKNOWN }
@@ -455,11 +526,21 @@ class NetworkMonitor(context: Context) {
         }.getOrNull()
     }
 
-    @SuppressLint("MissingPermission")
     private fun ensureTelephonyDisplayListener() {
+        synchronized(callbackLock) {
+            ensureTelephonyDisplayListenerLocked()
+        }
+    }
+
+    @SuppressLint("MissingPermission")
+    private fun ensureTelephonyDisplayListenerLocked() {
+        if (!isObserving) {
+            unregisterTelephonyDisplayListenerLocked()
+            return
+        }
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.R) return
         if (!hasPhoneStatePermission()) {
-            unregisterTelephonyDisplayListener()
+            unregisterTelephonyDisplayListenerLocked()
             return
         }
 
@@ -472,10 +553,10 @@ class NetworkMonitor(context: Context) {
             return
         }
 
-        unregisterTelephonyDisplayListener()
+        unregisterTelephonyDisplayListenerLocked()
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            registerApi31DisplayInfoCallback(tm, subId)
+            registerApi31DisplayInfoCallbackLocked(tm, subId)
         } else if (Build.VERSION.SDK_INT == Build.VERSION_CODES.R) {
             registerApi30PhoneStateListener(tm, subId)
         }
@@ -483,10 +564,11 @@ class NetworkMonitor(context: Context) {
 
     @RequiresApi(Build.VERSION_CODES.S)
     @SuppressLint("MissingPermission")
-    private fun registerApi31DisplayInfoCallback(tm: TelephonyManager, subId: Int) {
-        runCatching {
+    private fun registerApi31DisplayInfoCallbackLocked(tm: TelephonyManager, subId: Int) {
+        try {
             val callback = object : TelephonyCallback(), TelephonyCallback.DisplayInfoListener {
                 override fun onDisplayInfoChanged(telephonyDisplayInfo: TelephonyDisplayInfo) {
+                    if (!isObserving) return
                     latestOverrideNetworkType = telephonyDisplayInfo.overrideNetworkType
                     latestDisplayNetworkType = telephonyDisplayInfo.networkType
                     _networkState.value = readCurrentSnapshot()
@@ -496,6 +578,18 @@ class NetworkMonitor(context: Context) {
             registeredTelephonyManager = tm
             registeredTelephonySubId = subId
             registeredTelephonyCallback = callback
+        } catch (_: IllegalArgumentException) {
+            registeredTelephonyManager = null
+            registeredTelephonyCallback = null
+            registeredTelephonySubId = Int.MIN_VALUE
+        } catch (_: SecurityException) {
+            registeredTelephonyManager = null
+            registeredTelephonyCallback = null
+            registeredTelephonySubId = Int.MIN_VALUE
+        } catch (_: RuntimeException) {
+            registeredTelephonyManager = null
+            registeredTelephonyCallback = null
+            registeredTelephonySubId = Int.MIN_VALUE
         }
     }
 
@@ -504,19 +598,28 @@ class NetworkMonitor(context: Context) {
     @SuppressLint("MissingPermission")
     private fun registerApi30PhoneStateListener(tm: TelephonyManager, subId: Int) {
         val registerAction = {
-            runCatching {
-                val listener = object : PhoneStateListener() {
-                    @RequiresApi(Build.VERSION_CODES.R)
-                    override fun onDisplayInfoChanged(telephonyDisplayInfo: TelephonyDisplayInfo) {
-                        latestOverrideNetworkType = telephonyDisplayInfo.overrideNetworkType
-                        latestDisplayNetworkType = telephonyDisplayInfo.networkType
-                        _networkState.value = readCurrentSnapshot()
+            synchronized(callbackLock) {
+                if (isObserving && hasPhoneStatePermission() && registeredPhoneStateListener == null) {
+                    try {
+                        val listener = object : PhoneStateListener() {
+                            @Deprecated("Deprecated in Java")
+                            @RequiresApi(Build.VERSION_CODES.R)
+                            override fun onDisplayInfoChanged(telephonyDisplayInfo: TelephonyDisplayInfo) {
+                                if (!isObserving) return
+                                latestOverrideNetworkType = telephonyDisplayInfo.overrideNetworkType
+                                latestDisplayNetworkType = telephonyDisplayInfo.networkType
+                                _networkState.value = readCurrentSnapshot()
+                            }
+                        }
+                        tm.listen(listener, PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED)
+                        registeredTelephonyManager = tm
+                        registeredTelephonySubId = subId
+                        registeredPhoneStateListener = listener
+                    } catch (_: IllegalArgumentException) {
+                    } catch (_: SecurityException) {
+                    } catch (_: RuntimeException) {
                     }
                 }
-                tm.listen(listener, PhoneStateListener.LISTEN_DISPLAY_INFO_CHANGED)
-                registeredTelephonyManager = tm
-                registeredTelephonySubId = subId
-                registeredPhoneStateListener = listener
             }
         }
         if (Looper.myLooper() != null) {
@@ -527,26 +630,37 @@ class NetworkMonitor(context: Context) {
     }
 
     @Suppress("DEPRECATION")
-    private fun unregisterTelephonyDisplayListener() {
+    private fun unregisterTelephonyDisplayListenerLocked() {
         val tm = registeredTelephonyManager
         val callback = registeredTelephonyCallback
         val listener = registeredPhoneStateListener
 
-        if (tm != null) {
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && callback is TelephonyCallback) {
-                runCatching { tm.unregisterTelephonyCallback(callback) }
-            }
-            if (listener != null) {
-                runCatching { tm.listen(listener, PhoneStateListener.LISTEN_NONE) }
-            }
-        }
-
+        // Clear fields before unregistering so a second call never attempts a duplicate unregister.
         registeredTelephonyManager = null
         registeredTelephonyCallback = null
         registeredPhoneStateListener = null
         registeredTelephonySubId = Int.MIN_VALUE
         latestOverrideNetworkType = OVERRIDE_NETWORK_TYPE_NONE
         latestDisplayNetworkType = TelephonyManager.NETWORK_TYPE_UNKNOWN
+
+        if (tm != null) {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && callback is TelephonyCallback) {
+                try {
+                    tm.unregisterTelephonyCallback(callback)
+                } catch (_: IllegalArgumentException) {
+                } catch (_: SecurityException) {
+                } catch (_: RuntimeException) {
+                }
+            }
+            if (listener != null) {
+                try {
+                    tm.listen(listener, PhoneStateListener.LISTEN_NONE)
+                } catch (_: IllegalArgumentException) {
+                } catch (_: SecurityException) {
+                } catch (_: RuntimeException) {
+                }
+            }
+        }
     }
 
     companion object {
@@ -580,6 +694,7 @@ class NetworkMonitor(context: Context) {
             else -> WifiSignalQuality.WEAK
         }
 
+        @Suppress("DEPRECATION")
         internal fun mapCellularGenerationTag(
             networkType: Int,
             overrideNetworkType: Int = OVERRIDE_NETWORK_TYPE_NONE,

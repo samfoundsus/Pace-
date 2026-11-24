@@ -26,6 +26,7 @@ import com.example.engine.download.DownloadEngine
 import com.example.engine.latency.LatencyEngine
 import com.example.engine.speedtest.NetworkMonitor
 import com.example.engine.speedtest.NetworkSnapshot
+import com.example.engine.speedtest.OkHttpCleanup
 import com.example.engine.speedtest.SpeedTestClientFactory
 import com.example.engine.speedtest.SpeedTestEngine
 import com.example.engine.speedtest.WifiBand
@@ -329,7 +330,7 @@ class SpeedTestViewModel(
     fun onCancelClicked() {
         activeTestJob?.cancel()
         activeTestJob = null
-        managedClients.forEach { it.dispatcher.cancelAll() }
+        managedClients.forEach { OkHttpCleanup.cancelClientAsync(it) }
         // Never save or retain an incomplete measurement as a successful result
         _uiState.update { state ->
             state.copy(
@@ -621,8 +622,7 @@ class SpeedTestViewModel(
         activeTestJob = null
         networkMonitor.stopObserving()
         managedClients.forEach { client ->
-            client.dispatcher.cancelAll()
-            client.connectionPool.evictAll()
+            OkHttpCleanup.closeClientAsync(client, evictPool = true)
         }
         super.onCleared()
     }

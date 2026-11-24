@@ -20,6 +20,7 @@ import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
@@ -36,6 +37,7 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -89,8 +91,15 @@ fun SettingsScreen(
     onHapticFeedbackChange: (Boolean) -> Unit,
     onMobileDataWarningChange: (Boolean) -> Unit,
     onIncludeCommunityServersChange: (Boolean) -> Unit = {},
+    hasCrashReport: Boolean = false,
+    onOpenCrashReport: () -> Unit = {},
+    onRefreshCrashReport: () -> Unit = {},
     modifier: Modifier = Modifier,
 ) {
+    LaunchedEffect(Unit) {
+        onRefreshCrashReport()
+    }
+
     val supportsDynamicColor = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
 
     var showThemeDialog by remember { mutableStateOf(false) }
@@ -277,6 +286,21 @@ fun SettingsScreen(
                     }
                 }
 
+                if (hasCrashReport) {
+                    item(key = "section_diagnostics") {
+                        SettingsSection(title = stringResource(R.string.settings_diagnostics_section)) {
+                            SettingsChoiceTile(
+                                title = stringResource(R.string.settings_last_crash_report_title),
+                                summary = stringResource(R.string.settings_last_crash_report_summary),
+                                shape = groupTileShape(index = 0, count = 1),
+                                onClick = onOpenCrashReport,
+                                showChevron = true,
+                                testTag = "settings_last_crash_report_row",
+                            )
+                        }
+                    }
+                }
+
                 item(key = "brand_footer") {
                     Text(
                         text = stringResource(R.string.settings_footer_brand),
@@ -357,6 +381,7 @@ private fun SettingsChoiceTile(
     summary: String,
     shape: Shape,
     onClick: () -> Unit,
+    showChevron: Boolean = false,
     testTag: String,
 ) {
     Surface(
@@ -390,6 +415,14 @@ private fun SettingsChoiceTile(
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
+                )
+            }
+            if (showChevron) {
+                Spacer(modifier = Modifier.width(12.dp))
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
         }

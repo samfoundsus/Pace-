@@ -585,4 +585,32 @@ object SpeedTestIcons {
             }
         }.build()
     }
+
+    val Copy: ImageVector by lazy {
+        ImageVector.Builder(
+            name = "Copy",
+            defaultWidth = 24.dp,
+            defaultHeight = 24.dp,
+            viewportWidth = 24f,
+            viewportHeight = 24f,
+        ).apply {
+            path(
+                stroke = SolidColor(Color.Black),
+                strokeLineWidth = 2f,
+                strokeLineCap = StrokeCap.Round,
+                strokeLineJoin = StrokeJoin.Round,
+            ) {
+                moveTo(9f, 9f)
+                horizontalLineTo(19f)
+                verticalLineTo(20f)
+                horizontalLineTo(9f)
+                close()
+                moveTo(15f, 9f)
+                verticalLineTo(5f)
+                horizontalLineTo(5f)
+                verticalLineTo(16f)
+                horizontalLineTo(9f)
+            }
+        }.build()
+    }
 }
