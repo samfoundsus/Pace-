@@ -1,6 +1,7 @@
 package com.example.ui.screens
 
 import android.os.Build
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -8,7 +9,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -23,19 +23,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material.icons.rounded.Check
 import androidx.compose.material3.AlertDialog
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.RadioButton
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -47,7 +42,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -58,6 +52,8 @@ import com.example.R
 import com.example.data.settings.SpeedUnit
 import com.example.data.settings.ThemeMode
 import com.example.data.settings.UserSettings
+import com.example.ui.components.TabScreenHeader
+import com.example.ui.components.TabScreenHeaderDefaults
 
 private val GroupOuterCorner = 28.dp
 private val GroupInnerCorner = 4.dp
@@ -80,7 +76,6 @@ private fun groupTileShape(index: Int, count: Int): Shape = when {
     else -> RoundedCornerShape(GroupInnerCorner)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     settings: UserSettings,
@@ -104,10 +99,6 @@ fun SettingsScreen(
 
     var showThemeDialog by remember { mutableStateOf(false) }
     var showUnitsDialog by remember { mutableStateOf(false) }
-
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-        rememberTopAppBarState(),
-    )
 
     if (showThemeDialog) {
         RadioChoiceDialog(
@@ -155,42 +146,33 @@ fun SettingsScreen(
         SpeedUnit.MB_PER_SEC -> stringResource(R.string.unit_mb_per_sec)
     }
 
-    Scaffold(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("settings_screen"),
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            LargeTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.settings_title),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                scrollBehavior = scrollBehavior,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-            )
-        },
-    ) { innerPadding ->
-        Box(
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            contentAlignment = Alignment.TopCenter,
+                .widthIn(max = 600.dp),
         ) {
+            TabScreenHeader(
+                title = stringResource(R.string.settings_title),
+                titleTestTag = "settings_screen_title",
+            )
+
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 600.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = TabScreenHeaderDefaults.ContentTopGap,
+                    bottom = 20.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 item(key = "section_appearance") {

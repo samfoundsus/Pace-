@@ -54,6 +54,8 @@ import com.example.data.models.ConnectionType
 import com.example.data.models.TestResult
 import com.example.data.settings.SpeedUnit
 import com.example.ui.components.SpeedTestIcons
+import com.example.ui.components.TabScreenHeader
+import com.example.ui.components.TabScreenHeaderDefaults
 import com.example.ui.components.formatLatencyReadout
 import com.example.ui.components.formatSpeedValue
 import com.example.ui.components.formatTimestampMedium
@@ -126,40 +128,34 @@ fun HistoryScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .widthIn(max = 600.dp)
-                .padding(horizontal = 20.dp),
+                .widthIn(max = 600.dp),
         ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(top = 16.dp, bottom = 12.dp),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text(
-                    text = stringResource(R.string.history_title),
-                    style = MaterialTheme.typography.headlineMedium,
-                    color = MaterialTheme.colorScheme.onSurface,
-                )
-
-                if (results.isNotEmpty()) {
-                    TextButton(
-                        onClick = { showClearDialog = true },
-                        modifier = Modifier.testTag("clear_all_history_button"),
-                    ) {
-                        Text(
-                            text = stringResource(R.string.action_clear_all),
-                            color = MaterialTheme.colorScheme.error,
-                        )
+            TabScreenHeader(
+                title = stringResource(R.string.history_title),
+                titleTestTag = "history_screen_title",
+                action = if (results.isNotEmpty()) {
+                    {
+                        TextButton(
+                            onClick = { showClearDialog = true },
+                            modifier = Modifier.testTag("clear_all_history_button"),
+                        ) {
+                            Text(
+                                text = stringResource(R.string.action_clear_all),
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
-                }
-            }
+                } else {
+                    null
+                },
+            )
 
             if (results.isEmpty()) {
                 HistoryEmptyState(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .weight(1f),
+                        .weight(1f)
+                        .padding(horizontal = 20.dp),
                 )
             } else {
                 LazyColumn(
@@ -167,7 +163,12 @@ fun HistoryScreen(
                         .fillMaxWidth()
                         .weight(1f)
                         .testTag("history_list"),
-                    contentPadding = PaddingValues(top = 4.dp, bottom = 20.dp),
+                    contentPadding = PaddingValues(
+                        start = 20.dp,
+                        end = 20.dp,
+                        top = TabScreenHeaderDefaults.ContentTopGap,
+                        bottom = 20.dp,
+                    ),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     items(

@@ -1,5 +1,6 @@
 package com.example.ui.screens
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -7,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -19,27 +19,23 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
-import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
-import androidx.compose.material3.LargeTopAppBar
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TopAppBarDefaults
-import androidx.compose.material3.rememberTopAppBarState
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Shape
-import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import com.example.R
+import com.example.ui.components.TabScreenHeader
+import com.example.ui.components.TabScreenHeaderDefaults
 
 private val ToolsGroupOuterCorner = 28.dp
 private val ToolsGroupInnerCorner = 4.dp
@@ -62,7 +58,6 @@ private fun toolsTileShape(index: Int, count: Int): Shape = when {
     else -> RoundedCornerShape(ToolsGroupInnerCorner)
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ToolsScreen(
     onOpenNetworkInfo: () -> Unit,
@@ -70,46 +65,33 @@ fun ToolsScreen(
     onOpenExtendedTest: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val scrollBehavior = TopAppBarDefaults.exitUntilCollapsedScrollBehavior(
-        rememberTopAppBarState(),
-    )
-
-    Scaffold(
+    Box(
         modifier = modifier
             .fillMaxSize()
-            .nestedScroll(scrollBehavior.nestedScrollConnection)
+            .background(MaterialTheme.colorScheme.background)
             .testTag("tools_screen"),
-        containerColor = MaterialTheme.colorScheme.background,
-        contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        topBar = {
-            LargeTopAppBar(
-                title = {
-                    Text(
-                        text = stringResource(R.string.tools_title),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                    )
-                },
-                scrollBehavior = scrollBehavior,
-                windowInsets = WindowInsets(0, 0, 0, 0),
-                colors = TopAppBarDefaults.largeTopAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.background,
-                    scrolledContainerColor = MaterialTheme.colorScheme.surfaceContainer,
-                ),
-            )
-        },
-    ) { innerPadding ->
-        Box(
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding),
-            contentAlignment = Alignment.TopCenter,
+                .widthIn(max = 600.dp),
         ) {
+            TabScreenHeader(
+                title = stringResource(R.string.tools_title),
+                titleTestTag = "tools_screen_title",
+            )
+
             LazyColumn(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .widthIn(max = 600.dp),
-                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    .fillMaxWidth()
+                    .weight(1f),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = TabScreenHeaderDefaults.ContentTopGap,
+                    bottom = 20.dp,
+                ),
                 verticalArrangement = Arrangement.spacedBy(24.dp),
             ) {
                 item(key = "tools_diagnostics") {
